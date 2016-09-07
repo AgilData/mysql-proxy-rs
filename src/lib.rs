@@ -147,6 +147,7 @@ impl ConnReader {
                 self.read_pos -= s;
 
                 println!("parse_packet(): ");
+                print_packet_bytes(&p.bytes);
                 print_packet_chars(&p.bytes);
 
                 Some(p)
@@ -193,6 +194,7 @@ impl ConnWriter{
         self.write_buf.truncate(self.write_pos);
         self.write_buf.extend_from_slice(&p.bytes);
         self.write_pos += p.bytes.len();
+        println!("Extended write buffer by {} bytes", p.bytes.len());
     }
 
     /// Writes the contents of the write buffer to the socket
@@ -201,6 +203,7 @@ impl ConnWriter{
         while self.write_pos > 0 {
             try_ready!(self.stream.poll_write());
             let m = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
+            println!("Wrote {} bytes", m);
             // remove this packet from the buffer
             //TODO: must be more efficient way to do this
             for _ in 0..m {
