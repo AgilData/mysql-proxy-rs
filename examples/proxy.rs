@@ -67,28 +67,27 @@ fn main() {
     lp.run(server).unwrap();
 }
 
-#[derive(Debug)]
-pub enum Direction {
-    Request, Response
-}
-
-struct MyHandler {
-    direction: Direction
-}
-
 impl PacketHandler for MyHandler {
-    fn handle(&self, p: &Packet) {
-        println!("Handling {:?} packet:", self.direction);
+
+    fn handle_request(&self, p: &Packet) -> Action {
+        println!("Request:");
         print_packet_chars(&p.bytes);
+        Action::Forward
     }
+
+    fn handle_request(&self, p: &Packet) -> Action {
+        println!("Response:");
+        print_packet_chars(&p.bytes);
+        Action::Forward
+    }
+
 }
 
 impl Drop for MyHandler {
     fn drop(&mut self) {
-        println!("Dropping {:?} handler", self.direction);
+        println!("Dropping handler");
     }
 }
-
 
 #[allow(dead_code)]
 fn print_packet_chars(buf: &[u8]) {
