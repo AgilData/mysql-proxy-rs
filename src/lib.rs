@@ -244,6 +244,8 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<(u64, u64), io::Error> {
+        println!("poll()");
+
         loop {
             // try reading from client
             let client_read = match self.client_reader.read() {
@@ -279,7 +281,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                         Action::Mutate(ref p2) => self.client_writer.push(p2),
                         Action::Respond(ref v) => {
                             for p in v {
-                                self.client_writer.push(&p);
+                                self.server_writer.push(&p);
                             }
                         }
                     };
@@ -294,6 +296,11 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
             // try writing to client
             let client_write = self.client_writer.write();
+
+            println!("client_read = {:?}", client_read);
+            println!("client_write = {:?}", client_write);
+            println!("server_read = {:?}", server_read);
+            println!("server_write = {:?}", server_write);
 
             try_ready!(client_read);
             try_ready!(client_write);
