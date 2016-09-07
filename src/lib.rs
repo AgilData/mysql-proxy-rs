@@ -46,7 +46,8 @@ pub struct Client {
 
 impl Client {
 
-    pub fn serve(self, conn: TcpStream) -> Box<Future<Item = (u64, u64), Error = io::Error>> {
+    pub fn serve<H: PacketHandler>(self, conn: TcpStream, request_handler: H) -> Box<Future<Item = (u64, u64), Error = io::Error>> {
+
 
         let addr = Ipv4Addr::new(127, 0, 0, 1);
         let port = 3306;
@@ -72,6 +73,10 @@ impl Client {
         Box::new(pair.and_then(|(c1, c2)| {
             let c1 = Rc::new(c1);
             let c2 = Rc::new(c2);
+
+            // example of calling the handler .. but I really want to do this in the future instead
+//            let buf = [0u8; 16];
+//            request_handler.handle(Packet { header: &buf[0..4], payload: &buf[4..]});
 
             let half1 = Transfer::new(c1.clone(), c2.clone(), Direction::Request);
             let half2 = Transfer::new(c2, c1, Direction::Response);

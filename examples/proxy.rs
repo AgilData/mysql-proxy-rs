@@ -46,7 +46,7 @@ fn main() {
         (Client {
             pool: pool.clone(),
             handle: handle.clone(),
-        }.serve(socket), addr)
+        }.serve(socket, MyHandler {} ), addr)
     });
     let server = clients.for_each(|(client, addr)| {
         pin.spawn(client.then(move |res| {
@@ -62,4 +62,12 @@ fn main() {
     });
 
     lp.run(server).unwrap();
+}
+
+struct MyHandler {}
+
+impl PacketHandler for MyHandler {
+    fn handle(&self, p: Packet) {
+        println!("handling packet");
+    }
 }
