@@ -56,7 +56,6 @@ impl Client {
                                              handler: H,
                                         ) -> Box<Future<Item = (u64, u64), Error = Error>> {
 
-
         let addr = Ipv4Addr::new(127, 0, 0, 1);
         let port = 3306;
         let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
@@ -64,19 +63,7 @@ impl Client {
         let handle = self.handle.clone();
         let connected = handle.tcp_connect(&addr);
 
-        // perform handshake
-        let pair = connected.and_then(move |server| {
-            read_exact(server, [0u8; 4]).and_then(move |(s,hdr)| {
-                let l = parse_packet_length(&hdr);
-                read_exact(s, vec![0u8; l]).and_then(move |(s2,payload)| {
-                    write_all(conn, hdr).and_then(move |(c2,_)| {
-                        write_all(c2, payload).and_then(move |(c3,_)| {
-                            Ok((c3, s2))
-                        })
-                    })
-                })
-            })
-        });
+        let pair = connected.and_then(move |server| Ok((conn,server)));
 
         Box::new(pair.and_then(move |(c1, c2)| {
             let c1 = Rc::new(c1);
@@ -111,6 +98,7 @@ impl ConnReader {
     }
 
     fn read(&mut self) -> Poll<Option<Packet>, io::Error> {
+        println!("read()");
         loop {
 
             // see if there is a packet already in the buffer
@@ -124,7 +112,8 @@ impl ConnReader {
             //TODO: ensure capacity first
             let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
             if n == 0 {
-                return Err(Error::new(ErrorKind::Other, "uh oh"));
+                println!("Detected connection closed");
+                return Err(Error::new(ErrorKind::Other, "connection closed"));
             }
             self.read_amt += n as u64;
             self.read_pos += n;
@@ -157,6 +146,9 @@ impl ConnReader {
                 }
                 self.read_pos -= s;
 
+                println!("parse_packet(): ");
+                print_packet_chars(&p.bytes);
+
                 Some(p)
             } else {
                 None
@@ -165,6 +157,26 @@ impl ConnReader {
             None
         }
     }
+}
+
+
+#[allow(dead_code)]
+pub fn print_packet_chars(buf: &[u8]) {
+    print!("[");
+    for i in 0..buf.len() {
+        print!("{} ", buf[i] as char);
+    }
+    println!("]");
+}
+
+#[allow(dead_code)]
+pub fn print_packet_bytes(buf: &[u8]) {
+    print!("[");
+    for i in 0..buf.len() {
+        if i%8==0 { println!(""); }
+        print!("{:#04x} ",buf[i]);
+    }
+    println!("]");
 }
 
 impl ConnWriter{
@@ -178,15 +190,22 @@ impl ConnWriter{
 
     /// Write a packet to the write buffer
     fn push(&mut self, p: &Packet) {
+        self.write_buf.truncate(self.write_pos);
         self.write_buf.extend_from_slice(&p.bytes);
         self.write_pos += p.bytes.len();
     }
 
     /// Writes the contents of the write buffer to the socket
     fn write(&mut self) -> Poll<(), io::Error> {
+        println!("write()");
         while self.write_pos > 0 {
             try_ready!(self.stream.poll_write());
             let m = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
+            // remove this packet from the buffer
+            //TODO: must be more efficient way to do this
+            for _ in 0..m {
+                self.write_buf.remove(0);
+            }
             self.write_pos -= m;
         }
         return Ok(Async::Ready(()));
@@ -252,9 +271,9 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             let server_read = match self.server_reader.read() {
                 Ok(Async::Ready(None)) => Ok(Async::Ready(())),
                 Ok(Async::Ready(Some(p))) => {
-                    match self.handler.handle_request(&p) {
-                        Action::Forward => self.server_writer.push(&p),
-                        Action::Mutate(ref p2) => self.server_writer.push(p2),
+                    match self.handler.handle_response(&p) {
+                        Action::Forward => self.client_writer.push(&p),
+                        Action::Mutate(ref p2) => self.client_writer.push(p2),
                         Action::Respond(ref v) => {
                             for p in v {
                                 self.client_writer.push(&p);

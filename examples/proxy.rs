@@ -47,8 +47,7 @@ fn main() {
             pool: pool.clone(),
             handle: handle.clone(),
         }.serve(socket,
-                MyHandler { direction: Direction::Request }, // our request handler
-                MyHandler { direction: Direction::Response } // our response handler
+                MyHandler {} // our packet handler
         ), addr)
     });
     let server = clients.for_each(|(client, addr)| {
@@ -67,6 +66,8 @@ fn main() {
     lp.run(server).unwrap();
 }
 
+struct MyHandler {}
+
 impl PacketHandler for MyHandler {
 
     fn handle_request(&self, p: &Packet) -> Action {
@@ -75,7 +76,7 @@ impl PacketHandler for MyHandler {
         Action::Forward
     }
 
-    fn handle_request(&self, p: &Packet) -> Action {
+    fn handle_response(&self, p: &Packet) -> Action {
         println!("Response:");
         print_packet_chars(&p.bytes);
         Action::Forward
@@ -89,22 +90,4 @@ impl Drop for MyHandler {
     }
 }
 
-#[allow(dead_code)]
-fn print_packet_chars(buf: &[u8]) {
-    print!("[");
-    for i in 0..buf.len() {
-        print!("{} ", buf[i] as char);
-    }
-    println!("]");
-}
-
-#[allow(dead_code)]
-fn print_packet_bytes(buf: &[u8]) {
-    print!("[");
-    for i in 0..buf.len() {
-        if i%8==0 { println!(""); }
-        print!("{:#04x} ",buf[i]);
-    }
-    println!("]");
-}
 
