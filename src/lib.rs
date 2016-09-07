@@ -133,7 +133,7 @@ impl Conn {
         }
     }
 
-    fn write(&self) -> Poll<(), io::Error> {
+    fn write(&self, p: &Packet) -> Poll<(), io::Error> {
         while self.write_pos > 0 {
             try_ready!(self.stream.poll_write());
 
@@ -171,16 +171,22 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
             // try reading from client
             let client_read = match self.client.read() {
-                Ok(Async::Ready(None)) => {},
+                Ok(Async::Ready(None)) => Ok(Async::Ready(())),
                 Ok(Async::Ready(Some(p))) => {
                     match self.handler.handle_request(&p) {
-                        Action::Forward => {},
-                        Action::Mutate(p2) => {},
-                        Action::Respond(v) => {},
+                        Action::Forward => self.server.write(&p),
+                        Action::Mutate(ref p2) => self.server.write(p2),
+                        Action::Respond(v) => {
+                            for p in v {
+                                //TODO: cannot borrow mutable
+                                //try!(self.client.write(&p));
+                            }
+                            Ok(Async::Ready(()))
+                        }
                     }
                 },
-                Ok(Async::NotReady) => {},
-                Err(e) => {}
+                Ok(Async::NotReady) => Ok(Async::NotReady),
+                Err(e) => Err(e)
             };
 
             // try writing to server
