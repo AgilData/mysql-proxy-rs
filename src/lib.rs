@@ -24,6 +24,13 @@ use futures_cpupool::CpuPool;
 use tokio_core::{Loop, LoopHandle, TcpStream};
 use tokio_core::io::{read_exact, write_all, Window};
 
+pub struct Packet<'a> {
+    pub bytes: &'a [u8]
+}
+
+pub trait PacketHandler {
+    fn handle(&self, p: &Packet);
+}
 
 fn parse_packet_length(header: &[u8]) -> usize {
     (((header[2] as u32) << 16) |
@@ -38,7 +45,11 @@ pub struct Client {
 
 impl Client {
 
-    pub fn serve(self, conn: TcpStream) -> Box<Future<Item = (u64, u64), Error = io::Error>> {
+    pub fn serve<H: PacketHandler + 'static>(self, conn: TcpStream,
+                                             request_handler: H,
+                                             response_handler: H
+                                        ) -> Box<Future<Item = (u64, u64), Error = io::Error>> {
+
 
         let addr = Ipv4Addr::new(127, 0, 0, 1);
         let port = 3306;
@@ -61,39 +72,36 @@ impl Client {
             })
         });
 
-        Box::new(pair.and_then(|(c1, c2)| {
+        Box::new(pair.and_then(move |(c1, c2)| {
             let c1 = Rc::new(c1);
             let c2 = Rc::new(c2);
 
-            let half1 = Transfer::new(c1.clone(), c2.clone(), Direction::Request);
-            let half2 = Transfer::new(c2, c1, Direction::Response);
+            let half1 = Transfer::new(c1.clone(), c2.clone(), request_handler);
+            let half2 = Transfer::new(c2, c1, response_handler);
             half1.join(half2)
         }))
     }
 }
 
-struct Transfer {
+struct Transfer<H: PacketHandler + 'static> {
     reader: Rc<TcpStream>,
     writer: Rc<TcpStream>,
-    direction: Direction,
+    handler: H,
     buf: Vec<u8>,
     pos: usize,
     amt: u64,
 }
 
-#[derive(Debug)]
-enum Direction {
-    Request, Response
-}
-
-impl Transfer {
+impl<H> Transfer<H> where H: PacketHandler + 'static {
     fn new(reader: Rc<TcpStream>,
            writer: Rc<TcpStream>,
-    direction: Direction) -> Transfer {
+           handler: H
+           ) -> Transfer<H> {
+
         Transfer {
             reader: reader,
             writer: writer,
-            direction: direction,
+            handler: handler,
             buf: vec![0u8; 4096],
             pos: 0,
             amt: 0,
@@ -101,20 +109,21 @@ impl Transfer {
     }
 }
 
-impl Future for Transfer {
+impl<H> Future for Transfer<H> where H: PacketHandler + 'static {
     type Item = u64;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<u64, io::Error> {
 
         loop {
+
+            //TODO: there are definitely race conditions here that will need to be fixed soon
             try_ready!(self.reader.poll_read());
             try_ready!(self.writer.poll_write());
 
             //TODO: ensure there is capacity in the buffer for further reads
             let n = try_nb!((&*self.reader).read(&mut self.buf[self.pos..]));
             if n == 0 {
-                println!("{:?} EOF", self.direction);
                 try!(self.writer.shutdown(Shutdown::Write));
                 return Ok(self.amt.into())
             }
@@ -124,19 +133,22 @@ impl Future for Transfer {
             // do we have a header
             while self.pos > 3 {
                 let l = parse_packet_length(&self.buf);
-                println!("{:?} packet_len = {}", self.direction, l);
 
                 // do we have the whole packet?
                 let s = 4 + l;
                 if self.pos >= s {
 
-                    println!("{:?} Writing MySQL packet: ", self.direction);
-                    print_packet_bytes(&self.buf[0..s]);
-                    print_packet_chars(&self.buf[0..s]);
+                    // invoke the packet handler
+                    {
+                        let packet = Packet { bytes: &self.buf[0..s] };
+                        self.handler.handle(&packet);
+                    }
 
+                    // write the packet
                     let m = try!((&*self.writer).write(&self.buf[0..s]));
                     assert_eq!(s, m);
 
+                    // remove this packet from the buffer
                     //TODO: must be more efficient way to do this
                     for _ in 0..s {
                         self.buf.remove(0);
@@ -151,24 +163,4 @@ impl Future for Transfer {
         }
     }
 }
-
-#[allow(dead_code)]
-fn print_packet_chars(buf: &[u8]) {
-    print!("[");
-    for i in 0..buf.len() {
-        print!("{} ", buf[i] as char);
-    }
-    println!("]");
-}
-
-#[allow(dead_code)]
-fn print_packet_bytes(buf: &[u8]) {
-    print!("[");
-    for i in 0..buf.len() {
-        if i%8==0 { println!(""); }
-        print!("{:#04x} ",buf[i]);
-    }
-    println!("]");
-}
-
 

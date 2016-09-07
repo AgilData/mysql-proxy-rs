@@ -46,7 +46,10 @@ fn main() {
         (Client {
             pool: pool.clone(),
             handle: handle.clone(),
-        }.serve(socket), addr)
+        }.serve(socket,
+                MyHandler { direction: Direction::Request }, // our request handler
+                MyHandler { direction: Direction::Response } // our response handler
+        ), addr)
     });
     let server = clients.for_each(|(client, addr)| {
         pin.spawn(client.then(move |res| {
@@ -63,3 +66,46 @@ fn main() {
 
     lp.run(server).unwrap();
 }
+
+#[derive(Debug)]
+pub enum Direction {
+    Request, Response
+}
+
+struct MyHandler {
+    direction: Direction
+}
+
+impl PacketHandler for MyHandler {
+    fn handle(&self, p: &Packet) {
+        println!("Handling {:?} packet:", self.direction);
+        print_packet_chars(&p.bytes);
+    }
+}
+
+impl Drop for MyHandler {
+    fn drop(&mut self) {
+        println!("Dropping {:?} handler", self.direction);
+    }
+}
+
+
+#[allow(dead_code)]
+fn print_packet_chars(buf: &[u8]) {
+    print!("[");
+    for i in 0..buf.len() {
+        print!("{} ", buf[i] as char);
+    }
+    println!("]");
+}
+
+#[allow(dead_code)]
+fn print_packet_bytes(buf: &[u8]) {
+    print!("[");
+    for i in 0..buf.len() {
+        if i%8==0 { println!(""); }
+        print!("{:#04x} ",buf[i]);
+    }
+    println!("]");
+}
+
