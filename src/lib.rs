@@ -24,41 +24,6 @@ use futures_cpupool::CpuPool;
 use tokio_core::{Loop, LoopHandle, TcpStream};
 use tokio_core::io::{read_exact, write_all, Window};
 
-fn main() {
-    drop(env_logger::init());
-
-    let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
-    let addr = addr.parse::<SocketAddr>().unwrap();
-
-    let mut lp = Loop::new().unwrap();
-    let pool = CpuPool::new(4);
-    let buffer = Rc::new(RefCell::new(vec![0; 64 * 1024]));
-    let handle = lp.handle();
-    let listener = lp.run(handle.clone().tcp_listen(&addr)).unwrap();
-    let pin = lp.pin();
-
-    println!("Listening for MySQL proxy connections on {}", addr);
-    let clients = listener.incoming().map(move |(socket, addr)| {
-        (Client {
-            pool: pool.clone(),
-            handle: handle.clone(),
-        }.serve(socket), addr)
-    });
-    let server = clients.for_each(|(client, addr)| {
-        pin.spawn(client.then(move |res| {
-            match res {
-                Ok((a, b)) => {
-                    println!("proxied {}/{} bytes for {}", a, b, addr)
-                }
-                Err(e) => println!("error for {}: {}", addr, e),
-            }
-            futures::finished(())
-        }));
-        Ok(())
-    });
-
-    lp.run(server).unwrap();
-}
 
 fn parse_packet_length(header: &[u8]) -> usize {
     (((header[2] as u32) << 16) |
@@ -66,14 +31,14 @@ fn parse_packet_length(header: &[u8]) -> usize {
     header[0] as u32) as usize
 }
 
-struct Client {
-    pool: CpuPool,
-    handle: LoopHandle,
+pub struct Client {
+    pub pool: CpuPool,
+    pub handle: LoopHandle,
 }
 
 impl Client {
 
-    fn serve(self, conn: TcpStream) -> Box<Future<Item = (u64, u64), Error = io::Error>> {
+    pub fn serve(self, conn: TcpStream) -> Box<Future<Item = (u64, u64), Error = io::Error>> {
 
         let addr = Ipv4Addr::new(127, 0, 0, 1);
         let port = 3306;
