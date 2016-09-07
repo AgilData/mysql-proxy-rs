@@ -97,23 +97,35 @@ struct Conn {
     stream: Rc<TcpStream>,
     read_buf: Vec<u8>,
     write_buf: Vec<u8>,
-    pos: usize,
+    read_pos: usize,
+    write_pos: usize,
     read_amt: u64,
     write_amt: u64,
 }
 
 impl Conn {
 
+    fn new(stream: Rc<TcpStream>) -> Self {
+        Conn { stream: stream,
+            read_buf: vec![0u8; 4096],
+            write_buf: vec![0u8; 4096],
+            read_pos: 0,
+            write_pos: 0,
+            read_amt: 0,
+            write_amt: 0 }
+    }
+
     fn read(&mut self) -> Poll<Option<Packet>, io::Error> {
         loop {
             try_ready!(self.stream.poll_read());
 
-            let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.pos..]));
+            //TODO: ensure capacity first
+            let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
             if n == 0 {
                 return Err(Error::new(ErrorKind::Other, "uh oh"));
             }
             self.read_amt += n as u64;
-            self.pos += n;
+            self.read_pos += n;
 
             //TODO: parse packet from buffer
 
@@ -121,9 +133,12 @@ impl Conn {
         }
     }
 
-    fn write(&self) {
-        //try_ready!(self.stream.poll_write());
-        panic!("");
+    fn write(&self) -> Poll<(), io::Error> {
+        while self.write_pos > 0 {
+            try_ready!(self.stream.poll_write());
+
+        }
+        return Ok(Async::Ready(()));
     }
 }
 
@@ -140,8 +155,8 @@ impl<H> Pipe<H> where H: PacketHandler + 'static {
            ) -> Pipe<H> {
 
         Pipe {
-            client: Conn { stream: client, read_buf: vec![0u8; 4096], write_buf: vec![0u8; 4096], pos: 0, read_amt: 0, write_amt: 0 } ,
-            server: Conn { stream: server, read_buf: vec![0u8; 4096], write_buf: vec![0u8; 4096], pos: 0, read_amt: 0, write_amt: 0 },
+            client: Conn::new(client),
+            server: Conn::new(server),
             handler: handler,
         }
     }
