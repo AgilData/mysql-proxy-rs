@@ -1,0 +1,14 @@
+[package]
+name = "mysql-proxy"
+version = "0.1.0"
+authors = ["Andy Grove <andygrove73@gmail.com>"]
+
+[dependencies]
+log = "0.3"
+futures = { git = "https://github.com/alexcrichton/futures-rs" }
+futures-cpupool = { git = "https://github.com/alexcrichton/futures-rs" }
+tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
+env_logger = "0.3"
+
+[dev-dependencies]
+curl = "0.3"
