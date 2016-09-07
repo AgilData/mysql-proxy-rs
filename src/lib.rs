@@ -24,6 +24,14 @@ use futures_cpupool::CpuPool;
 use tokio_core::{Loop, LoopHandle, TcpStream};
 use tokio_core::io::{read_exact, write_all, Window};
 
+pub struct Packet<'a> {
+    pub header: &'a [u8],
+    pub payload: &'a [u8],
+}
+
+pub trait PacketHandler {
+    fn handle(&self, p: Packet);
+}
 
 fn parse_packet_length(header: &[u8]) -> usize {
     (((header[2] as u32) << 16) |
