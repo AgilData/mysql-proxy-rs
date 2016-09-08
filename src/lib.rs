@@ -107,25 +107,13 @@ impl ConnReader {
         }
     }
 
-    fn read(&mut self) -> Poll<Option<Packet>, io::Error> {
+    /// Read from the socket until the status is NotReady
+    fn read(&mut self) -> Poll<(), io::Error> {
         println!("{:?} read()", self.direction);
         loop {
-
-            // see if there is a packet already in the buffer
-            if let Some(p) = self.parse_packet() {
-                println!("{:?} read() returning Ready(packet)", self.direction);
-                return Ok(Async::Ready(Some(p)))
-            }
-
-            println!("{:?} Calling poll_read(), read_pos={}", self.direction, self.read_pos);
-
-            // try reading more data
+            println!("{:?} before poll_read()", self.direction);
             try_ready!(self.stream.poll_read());
-
-            println!("{:?} After poll_read()", self.direction);
-
-            println!("{:?} Before try_nb()", self.direction);
-
+            println!("{:?} before try_nb()", self.direction);
             //TODO: ensure capacity first
             let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
             if n == 0 {
@@ -135,18 +123,10 @@ impl ConnReader {
             println!("{:?} read() read {} bytes", self.direction, n);
             self.read_amt += n as u64;
             self.read_pos += n;
-
-            if let Some(p) = self.parse_packet() {
-                println!("{:?} read() returning Ready(packet)", self.direction);
-                return Ok(Async::Ready(Some(p)))
-            } else {
-                println!("{:?} read() returning Ready(None)", self.direction);
-                return Ok(Async::Ready(None))
-            }
         }
     }
 
-    fn parse_packet(&mut self) -> Option<Packet> {
+    fn next(&mut self) -> Option<Packet> {
         // do we have a header
         if self.read_pos > 3 {
             let l = parse_packet_length(&self.read_buf);
@@ -253,26 +233,20 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
         loop {
             // try reading from client
             println!("CLIENT READ");
-            let client_read = match self.client_reader.read() {
-                Ok(Async::Ready(None)) => Ok(Async::Ready(())),
-                Ok(Async::Ready(Some(p))) => {
-                    match self.handler.handle_request(&p) {
-                        Action::Forward => self.server_writer.push(&p),
-                        Action::Mutate(ref p2) => self.server_writer.push(p2),
-                        Action::Respond(ref v) => {
-                            for p in v {
-                                self.client_writer.push(&p);
-                            }
+            let client_read = self.client_reader.read();
+
+            // process buffered requests
+            while let Some(request) = self.client_reader.next() {
+                match self.handler.handle_request(&request) {
+                    Action::Forward => self.server_writer.push(&request),
+                    Action::Mutate(ref p2) => self.server_writer.push(p2),
+                    Action::Respond(ref v) => {
+                        for p in v {
+                            self.client_writer.push(&p);
                         }
-                    };
-                    Ok(Async::Ready(()))
-                },
-                Ok(Async::NotReady) => Ok(Async::NotReady),
-                Err(e) => {
-                    //try!(self.server_writer.stream.shutdown(Shutdown::Write));
-                    Err(e)
-                }
-            };
+                    }
+                };
+            }
 
             // try writing to server
             println!("SERVER WRITE");
@@ -280,26 +254,20 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
             // try reading from server
             println!("SERVER READ");
-            let server_read = match self.server_reader.read() {
-                Ok(Async::Ready(None)) => Ok(Async::Ready(())),
-                Ok(Async::Ready(Some(p))) => {
-                    match self.handler.handle_response(&p) {
-                        Action::Forward => self.client_writer.push(&p),
-                        Action::Mutate(ref p2) => self.client_writer.push(p2),
-                        Action::Respond(ref v) => {
-                            for p in v {
-                                self.server_writer.push(&p);
-                            }
+            let server_read = self.server_reader.read();
+
+            // process buffered responses
+            while let Some(response) = self.server_reader.next() {
+                match self.handler.handle_response(&response) {
+                    Action::Forward => self.client_writer.push(&response),
+                    Action::Mutate(ref p2) => self.client_writer.push(p2),
+                    Action::Respond(ref v) => {
+                        for p in v {
+                            self.server_writer.push(&p);
                         }
-                    };
-                    Ok(Async::Ready(()))
-                },
-                Ok(Async::NotReady) => Ok(Async::NotReady),
-                Err(e) => {
-                    //try!(self.client_writer.stream.shutdown(Shutdown::Write));
-                    Err(e)
-                }
-            };
+                    }
+                };
+            }
 
             // try writing to client
             println!("CLIENT WRITE");
