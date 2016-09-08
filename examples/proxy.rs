@@ -74,8 +74,8 @@ impl PacketHandler for MyHandler {
         println!("Request:");
         print_packet_chars(&p.bytes);
 
-        match p.bytes[4] {
-            0x03 => {
+        match p.packet_type() {
+            PacketType::ComQuery => {
 
                 let slice = &p.bytes[5..];
                 let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");

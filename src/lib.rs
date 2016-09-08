@@ -27,6 +27,40 @@ use tokio_core::io::{read_exact, write_all, Window};
 
 use byteorder::*;
 
+#[derive(Copy,Clone)]
+pub enum PacketType {
+    ComSleep = 0x00,
+    ComQuit = 0x01,
+    ComInitDb = 0x02,
+    ComQuery = 0x03,
+    ComFieldList = 0x04,
+    ComCreateDb = 0x05,
+    ComDropDb = 0x06,
+    ComRefresh = 0x07,
+    ComShutdown = 0x08,
+    ComStatistics = 0x09,
+    ComProcessInfo = 0x0a,
+    ComConnect = 0x0b,
+    ComProcessKill= 0x0c,
+    ComDebug = 0x0d,
+    ComPing = 0x0e,
+    ComTime = 0x0f,
+    ComDelayedInsert = 0x10,
+    ComChangeUser = 0x11,
+    ComBinlogDump = 0x12,
+    ComTableDump = 0x13,
+    ComConnectOut = 0x14,
+    ComRegisterSlave = 0x15,
+    ComStmtPrepare = 0x16,
+    ComStmtExecute = 0x17,
+    ComStmtSendLongData = 0x18,
+    ComStmtClose = 0x19,
+    ComStmtReset = 0x1a,
+    ComDaemon= 0x1d,
+    ComBinlogDumpGtid = 0x1e,
+    ComResetConnection = 0x1f,
+}
+
 pub struct Packet {
     pub bytes: Vec<u8>
 }
@@ -54,6 +88,47 @@ impl Packet {
         write_buf.extend_from_slice(&err_wtr);
 
         Packet { bytes: write_buf }
+    }
+
+    pub fn sequence_id(&self) -> u8 {
+        self.bytes[3]
+    }
+
+    //TODO: should return Result<PacketType, ?>
+    pub fn packet_type(&self) -> PacketType {
+        match self.bytes[4] {
+            0x00 => PacketType::ComSleep,
+            0x01 => PacketType::ComQuit,
+            0x02 => PacketType::ComInitDb,
+            0x03 => PacketType::ComQuery,
+            0x04 => PacketType::ComFieldList,
+            0x05 => PacketType::ComCreateDb,
+            0x06 => PacketType::ComDropDb,
+            0x07 => PacketType::ComRefresh,
+            0x08 => PacketType::ComShutdown,
+            0x09 => PacketType::ComStatistics,
+            0x0a => PacketType::ComProcessInfo,
+            0x0b => PacketType::ComConnect,
+            0x0c => PacketType::ComProcessKill,
+            0x0d => PacketType::ComDebug,
+            0x0e => PacketType::ComPing,
+            0x0f => PacketType::ComTime,
+            0x10 => PacketType::ComDelayedInsert,
+            0x11 => PacketType::ComChangeUser,
+            0x12 => PacketType::ComBinlogDump,
+            0x13 => PacketType::ComTableDump,
+            0x14 => PacketType::ComConnectOut,
+            0x15 => PacketType::ComRegisterSlave,
+            0x16 => PacketType::ComStmtPrepare,
+            0x17 => PacketType::ComStmtExecute,
+            0x18 => PacketType::ComStmtSendLongData,
+            0x19 => PacketType::ComStmtClose,
+            0x1a => PacketType::ComStmtReset,
+            0x1d => PacketType::ComDaemon,
+            0x1e => PacketType::ComBinlogDumpGtid,
+            0x1f => PacketType::ComResetConnection,
+            _ => panic!("Unsupported packet type")
+        }
     }
 
 }

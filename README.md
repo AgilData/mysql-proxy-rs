@@ -21,6 +21,8 @@ pub trait PacketHandler {
 
 This allows the proxy to forward packets unmodified, mutate individual packets, or take over handling of a packet completely.
 
+## Example
+
 The example proxy passes all queries to MySQL except for queries containing the word 'avocado'.
 
 ```
