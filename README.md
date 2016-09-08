@@ -6,7 +6,7 @@ An implementation of a MySQL proxy server built on top of `tokio-core`. Tested w
 
 The proxy uses the following interface for defining a handler for handling request and response packets:
 
-```
+```rust
 pub enum Action {
     Forward,                // forward the packet unmodified
     Mutate(Packet),         // mutate the packet
@@ -35,7 +35,7 @@ Then in a separate window you can test out the proxy. The proxy currently assume
 $ mysql -u root -p -h 127.0.0.1 -P 3307
 ```
 
-```
+```sql
 mysql> select 'banana';
 +--------+
 | banana |
