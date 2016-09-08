@@ -8,6 +8,7 @@ extern crate futures;
 #[macro_use]
 extern crate tokio_core;
 extern crate futures_cpupool;
+extern crate byteorder;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,8 +25,37 @@ use futures_cpupool::CpuPool;
 use tokio_core::{Loop, LoopHandle, TcpStream};
 use tokio_core::io::{read_exact, write_all, Window};
 
+use byteorder::*;
+
 pub struct Packet {
     pub bytes: Vec<u8>
+}
+
+impl Packet {
+
+    pub fn error_packet(code: u16, state: [u8; 5], msg: String) -> Self {
+        let mut err_header: Vec<u8> = vec![];
+        let mut err_wtr: Vec<u8> = vec![];
+
+        // start building payload
+        err_wtr.push(0xff);  // packet type
+        err_wtr.write_u16::<LittleEndian>(code).unwrap(); // error code
+        err_wtr.extend_from_slice("#".as_bytes()); // sql_state_marker
+        err_wtr.extend_from_slice(&state); // SQL STATE
+        err_wtr.extend_from_slice(msg.as_bytes());
+
+        // create header with length and sequence id
+        err_header.write_u32::<LittleEndian>(err_wtr.len() as u32).unwrap();
+        err_header.pop(); // we need 3 byte length, so discard last byte
+        err_header.push(1); // sequence_id
+
+        let mut write_buf: Vec<u8> = Vec::new();
+        write_buf.extend_from_slice(&err_header);
+        write_buf.extend_from_slice(&err_wtr);
+
+        Packet { bytes: write_buf }
+    }
+
 }
 
 pub enum Action {
@@ -235,6 +265,12 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             println!("CLIENT READ");
             let client_read = self.client_reader.read();
 
+            // if the client connection has closed, close the server connection too
+            match &client_read {
+                &Err(ref e) => { self.server_writer.stream.shutdown(Shutdown::Write); },
+                _ => {}
+            }
+
             // process buffered requests
             while let Some(request) = self.client_reader.next() {
                 match self.handler.handle_request(&request) {
@@ -255,6 +291,12 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // try reading from server
             println!("SERVER READ");
             let server_read = self.server_reader.read();
+
+            // if the server connection has closed, close the client connection too
+            match &server_read {
+                &Err(ref e) => { self.client_writer.stream.shutdown(Shutdown::Write); },
+                _ => {}
+            }
 
             // process buffered responses
             while let Some(response) = self.server_reader.next() {

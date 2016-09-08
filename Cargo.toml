@@ -9,6 +9,7 @@ futures = { git = "https://github.com/alexcrichton/futures-rs" }
 futures-cpupool = { git = "https://github.com/alexcrichton/futures-rs" }
 tokio-core = { git = "https://github.com/tokio-rs/tokio-core" }
 env_logger = "0.3"
+byteorder = "0.5.3"
 
 [dev-dependencies]
 curl = "0.3"

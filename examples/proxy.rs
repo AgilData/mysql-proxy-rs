@@ -73,7 +73,27 @@ impl PacketHandler for MyHandler {
     fn handle_request(&self, p: &Packet) -> Action {
         println!("Request:");
         print_packet_chars(&p.bytes);
-        Action::Forward
+
+        match p.bytes[4] {
+            0x03 => {
+
+                let slice = &p.bytes[5..];
+                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
+
+                println!("SQL: {}", sql);
+
+                if sql.contains("avocado") {
+                    Action::Respond(vec![Packet::error_packet(
+                                                1064, // error code
+                                                [0x31,0x32,0x33,0x34,0x35], // sql state
+                                                String::from("Proxy rejecting any avocado-related queries"))])
+                } else {
+                    Action::Forward
+                }
+            },
+            _ => Action::Forward
+        }
+
     }
 
     fn handle_response(&self, p: &Packet) -> Action {

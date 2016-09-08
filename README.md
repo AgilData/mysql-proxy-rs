@@ -4,7 +4,24 @@ An implementation of a MySQL proxy server built on top of `tokio-core`. Tested w
 
 ## Usage
 
-First, run the server
+The proxy uses the following interface for defining a handler for handling request and response packets:
+
+```
+pub enum Action {
+    Forward,                // forward the packet unmodified
+    Mutate(Packet),         // mutate the packet
+    Respond(Vec<Packet>)    // handle directly and optionally return some packets
+}
+
+pub trait PacketHandler {
+    fn handle_request(&self, p: &Packet) -> Action;
+    fn handle_response(&self, p: &Packet) -> Action;
+}
+```
+
+This allows the proxy to forward packets unmodified, mutate individual packets, or take over handling of a packet completely.
+
+The example proxy passes all queries to MySQL except for queries containing the word 'avocado'.
 
 ```
 $ cargo run --example proxy
@@ -16,6 +33,19 @@ Then in a separate window you can test out the proxy. The proxy currently assume
 
 ```
 $ mysql -u root -p -h 127.0.0.1 -P 3307
+```
+
+```
+mysql> select 'banana';
++--------+
+| banana |
++--------+
+| banana |
++--------+
+1 row in set (0.00 sec)
+
+mysql> select 'avocado';
+ERROR 1064 (12345): Proxy rejecting any avocado-related queries
 ```
 
 # License
