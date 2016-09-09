@@ -281,9 +281,14 @@ impl ConnWriter{
 
     /// Write a packet to the write buffer
     fn push(&mut self, p: &Packet) {
-        self.write_buf.truncate(self.write_pos);
-        self.write_buf.extend_from_slice(&p.bytes);
+        for i in 0 .. p.bytes.len() {
+            self.write_buf[self.write_pos + i] = p.bytes[i];
+        }
         self.write_pos += p.bytes.len();
+
+//        self.write_buf.truncate(self.write_pos);
+//        self.write_buf.extend_from_slice(&p.bytes);
+//        self.write_pos += p.bytes.len();
 //        println!("{:?} extended write buffer by {} bytes", self.direction, p.bytes.len());
     }
 
