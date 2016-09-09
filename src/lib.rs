@@ -344,9 +344,6 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                 };
             }
 
-            // try writing to server
-            let server_write = self.server_writer.write();
-
             // try reading from server
             let server_read = self.server_reader.read();
 
@@ -369,8 +366,14 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                 };
             }
 
+            // perform all of the writes at the end, since the request handlers may have
+            // queued packets in either, or both directions
+
             // try writing to client
             let client_write = self.client_writer.write();
+
+            // try writing to server
+            let server_write = self.server_writer.write();
 
             try_ready!(client_read);
             try_ready!(client_write);
