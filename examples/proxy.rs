@@ -47,7 +47,7 @@ fn main() {
             pool: pool.clone(),
             handle: handle.clone(),
         }.serve(socket,
-                MyHandler {} // our packet handler
+                MyHandler::new() // our packet handler
         ), addr)
     });
     let server = clients.for_each(|(client, addr)| {
@@ -67,6 +67,14 @@ fn main() {
 }
 
 struct MyHandler {}
+
+impl MyHandler {
+
+    fn new() -> Self {
+        println!("Created new handler");
+        MyHandler {}
+    }
+}
 
 impl PacketHandler for MyHandler {
 
