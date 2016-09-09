@@ -71,8 +71,8 @@ struct MyHandler {}
 impl PacketHandler for MyHandler {
 
     fn handle_request(&self, p: &Packet) -> Action {
-        println!("Request:");
-        print_packet_chars(&p.bytes);
+//        println!("Request:");
+//        print_packet_chars(&p.bytes);
 
 //        match p.packet_type() {
 //            PacketType::ComQuery => {
@@ -99,8 +99,8 @@ impl PacketHandler for MyHandler {
     }
 
     fn handle_response(&self, p: &Packet) -> Action {
-        println!("Response:");
-        print_packet_chars(&p.bytes);
+//        println!("Response:");
+//        print_packet_chars(&p.bytes);
         Action::Forward
     }
 
