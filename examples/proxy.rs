@@ -35,7 +35,7 @@ fn main() {
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let mut lp = Loop::new().unwrap();
-    let pool = CpuPool::new(4);
+    let pool = CpuPool::new(8);
     let buffer = Rc::new(RefCell::new(vec![0; 64 * 1024]));
     let handle = lp.handle();
     let listener = lp.run(handle.clone().tcp_listen(&addr)).unwrap();
@@ -47,7 +47,7 @@ fn main() {
             pool: pool.clone(),
             handle: handle.clone(),
         }.serve(socket,
-                MyHandler {} // our packet handler
+                MyHandler::new() // our packet handler
         ), addr)
     });
     let server = clients.for_each(|(client, addr)| {
@@ -66,39 +66,51 @@ fn main() {
     lp.run(server).unwrap();
 }
 
-struct MyHandler {}
+struct MyHandler {
+
+}
+
+impl MyHandler {
+
+    fn new() -> Self {
+        println!("Created new handler");
+        MyHandler {}
+    }
+}
 
 impl PacketHandler for MyHandler {
 
     fn handle_request(&self, p: &Packet) -> Action {
-        println!("Request:");
-        print_packet_chars(&p.bytes);
+//        println!("Request:");
+//        print_packet_chars(&p.bytes);
 
-        match p.packet_type() {
-            PacketType::ComQuery => {
+//        match p.packet_type() {
+//            PacketType::ComQuery => {
+//
+//                let slice = &p.bytes[5..];
+//                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
+//
+//                println!("SQL: {}", sql);
+//
+//                if sql.contains("avocado") {
+//                    Action::Respond(vec![Packet::error_packet(
+//                                                1064, // error code
+//                                                [0x31,0x32,0x33,0x34,0x35], // sql state
+//                                                String::from("Proxy rejecting any avocado-related queries"))])
+//                } else {
+//                    Action::Forward
+//                }
+//            },
+//            _ => Action::Forward
+//        }
 
-                let slice = &p.bytes[5..];
-                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
-
-                println!("SQL: {}", sql);
-
-                if sql.contains("avocado") {
-                    Action::Respond(vec![Packet::error_packet(
-                                                1064, // error code
-                                                [0x31,0x32,0x33,0x34,0x35], // sql state
-                                                String::from("Proxy rejecting any avocado-related queries"))])
-                } else {
-                    Action::Forward
-                }
-            },
-            _ => Action::Forward
-        }
+        Action::Forward
 
     }
 
     fn handle_response(&self, p: &Packet) -> Action {
-        println!("Response:");
-        print_packet_chars(&p.bytes);
+//        println!("Response:");
+//        print_packet_chars(&p.bytes);
         Action::Forward
     }
 

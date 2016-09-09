@@ -68,26 +68,26 @@ pub struct Packet {
 impl Packet {
 
     pub fn error_packet(code: u16, state: [u8; 5], msg: String) -> Self {
-        let mut err_header: Vec<u8> = vec![];
-        let mut err_wtr: Vec<u8> = vec![];
 
         // start building payload
-        err_wtr.push(0xff);  // packet type
-        err_wtr.write_u16::<LittleEndian>(code).unwrap(); // error code
-        err_wtr.extend_from_slice("#".as_bytes()); // sql_state_marker
-        err_wtr.extend_from_slice(&state); // SQL STATE
-        err_wtr.extend_from_slice(msg.as_bytes());
+        let mut payload: Vec<u8> = Vec::with_capacity(9 + msg.len());
+        payload.push(0xff);  // packet type
+        payload.write_u16::<LittleEndian>(code).unwrap(); // error code
+        payload.extend_from_slice("#".as_bytes()); // sql_state_marker
+        payload.extend_from_slice(&state); // SQL STATE
+        payload.extend_from_slice(msg.as_bytes());
 
         // create header with length and sequence id
-        err_header.write_u32::<LittleEndian>(err_wtr.len() as u32).unwrap();
-        err_header.pop(); // we need 3 byte length, so discard last byte
-        err_header.push(1); // sequence_id
+        let mut header: Vec<u8> = Vec::with_capacity(4 + 9 + msg.len());
+        header.write_u32::<LittleEndian>(payload.len() as u32).unwrap();
+        header.pop(); // we need 3 byte length, so discard last byte
+        header.push(1); // sequence_id
 
-        let mut write_buf: Vec<u8> = Vec::new();
-        write_buf.extend_from_slice(&err_header);
-        write_buf.extend_from_slice(&err_wtr);
+        // combine the vectors
+        header.extend_from_slice(&payload);
 
-        Packet { bytes: write_buf }
+        // now move the vector into the packet
+        Packet { bytes: header }
     }
 
     pub fn sequence_id(&self) -> u8 {
@@ -214,18 +214,13 @@ impl ConnReader {
 
     /// Read from the socket until the status is NotReady
     fn read(&mut self) -> Poll<(), io::Error> {
-        println!("{:?} read()", self.direction);
         loop {
-            println!("{:?} before poll_read()", self.direction);
             try_ready!(self.stream.poll_read());
-            println!("{:?} before try_nb()", self.direction);
             //TODO: ensure capacity first
             let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
             if n == 0 {
-                println!("{:?} Detected connection closed", self.direction);
                 return Err(Error::new(ErrorKind::Other, "connection closed"));
             }
-            println!("{:?} read() read {} bytes", self.direction, n);
             self.read_amt += n as u64;
             self.read_pos += n;
         }
@@ -238,22 +233,17 @@ impl ConnReader {
             // do we have the whole packet?
             let s = 4 + l;
             if self.read_pos >= s {
-
-                //TODO: clean up this hack
-                let mut temp : Vec<u8> = vec![];
-                temp.extend_from_slice( &self.read_buf[0..s]);
+                let mut temp : Vec<u8> = Vec::with_capacity(s);
+                temp.extend_from_slice(&self.read_buf[0..s]);
                 let p = Packet { bytes: temp };
 
-                // remove this packet from the buffer
-                //TODO: must be more efficient way to do this
-                for _ in 0..s {
-                    self.read_buf.remove(0);
+                // shift data down
+                let mut j = 0;
+                for i in s .. self.read_pos {
+                    self.read_buf[j] = self.read_buf[i];
+                    j += 1;
                 }
                 self.read_pos -= s;
-
-                println!("{:?} parse_packet(): read_pos={}, returning packet:", self.direction, self.read_pos);
-                print_packet_bytes(&p.bytes);
-                print_packet_chars(&p.bytes);
 
                 Some(p)
             } else {
@@ -265,8 +255,7 @@ impl ConnReader {
     }
 }
 
-
-impl ConnWriter{
+impl ConnWriter {
 
     fn new(stream: Rc<TcpStream>, direction: Direction) -> Self {
         ConnWriter{
@@ -280,25 +269,25 @@ impl ConnWriter{
 
     /// Write a packet to the write buffer
     fn push(&mut self, p: &Packet) {
-        self.write_buf.truncate(self.write_pos);
-        self.write_buf.extend_from_slice(&p.bytes);
+        for i in 0 .. p.bytes.len() {
+            self.write_buf[self.write_pos + i] = p.bytes[i];
+        }
         self.write_pos += p.bytes.len();
-        println!("{:?} extended write buffer by {} bytes", self.direction, p.bytes.len());
     }
 
     /// Writes the contents of the write buffer to the socket
     fn write(&mut self) -> Poll<(), io::Error> {
-        println!("{:?} write()", self.direction);
         while self.write_pos > 0 {
             try_ready!(self.stream.poll_write());
-            let m = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
-            println!("{:?} Wrote {} bytes", self.direction, m);
-            // remove this packet from the buffer
-            //TODO: must be more efficient way to do this
-            for _ in 0..m {
-                self.write_buf.remove(0);
+            let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
+
+            let mut j = 0;
+            for i in s .. self.write_pos {
+                self.write_buf[j] = self.write_buf[i];
+                j += 1;
             }
-            self.write_pos -= m;
+            self.write_pos -= s;
+
         }
         return Ok(Async::Ready(()));
     }
@@ -333,16 +322,12 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<(u64, u64), io::Error> {
-        println!("poll()");
-
         loop {
-            // try reading from client
-            println!("CLIENT READ");
             let client_read = self.client_reader.read();
 
             // if the client connection has closed, close the server connection too
             match &client_read {
-                &Err(ref e) => { self.server_writer.stream.shutdown(Shutdown::Write); },
+                &Err(ref e) => { self.server_writer.stream.shutdown(Shutdown::Write).unwrap(); },
                 _ => {}
             }
 
@@ -360,16 +345,14 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             }
 
             // try writing to server
-            println!("SERVER WRITE");
             let server_write = self.server_writer.write();
 
             // try reading from server
-            println!("SERVER READ");
             let server_read = self.server_reader.read();
 
             // if the server connection has closed, close the client connection too
             match &server_read {
-                &Err(ref e) => { self.client_writer.stream.shutdown(Shutdown::Write); },
+                &Err(ref e) => { self.client_writer.stream.shutdown(Shutdown::Write).unwrap(); },
                 _ => {}
             }
 
@@ -387,13 +370,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             }
 
             // try writing to client
-            println!("CLIENT WRITE");
             let client_write = self.client_writer.write();
-
-            println!("client_read = {:?}", client_read);
-            println!("client_write = {:?}", client_write);
-            println!("server_read = {:?}", server_read);
-            println!("server_write = {:?}", server_write);
 
             try_ready!(client_read);
             try_ready!(client_write);
