@@ -35,7 +35,7 @@ fn main() {
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let mut lp = Loop::new().unwrap();
-    let pool = CpuPool::new(4);
+    let pool = CpuPool::new(8);
     let buffer = Rc::new(RefCell::new(vec![0; 64 * 1024]));
     let handle = lp.handle();
     let listener = lp.run(handle.clone().tcp_listen(&addr)).unwrap();
