@@ -68,26 +68,26 @@ pub struct Packet {
 impl Packet {
 
     pub fn error_packet(code: u16, state: [u8; 5], msg: String) -> Self {
-        let mut err_header: Vec<u8> = vec![];
-        let mut err_wtr: Vec<u8> = vec![];
 
         // start building payload
-        err_wtr.push(0xff);  // packet type
-        err_wtr.write_u16::<LittleEndian>(code).unwrap(); // error code
-        err_wtr.extend_from_slice("#".as_bytes()); // sql_state_marker
-        err_wtr.extend_from_slice(&state); // SQL STATE
-        err_wtr.extend_from_slice(msg.as_bytes());
+        let mut payload: Vec<u8> = Vec::with_capacity(9 + msg.len());
+        payload.push(0xff);  // packet type
+        payload.write_u16::<LittleEndian>(code).unwrap(); // error code
+        payload.extend_from_slice("#".as_bytes()); // sql_state_marker
+        payload.extend_from_slice(&state); // SQL STATE
+        payload.extend_from_slice(msg.as_bytes());
 
         // create header with length and sequence id
-        err_header.write_u32::<LittleEndian>(err_wtr.len() as u32).unwrap();
-        err_header.pop(); // we need 3 byte length, so discard last byte
-        err_header.push(1); // sequence_id
+        let mut header: Vec<u8> = vec![0_u8; 4];
+        header.write_u32::<LittleEndian>(payload.len() as u32).unwrap();
+        header.pop(); // we need 3 byte length, so discard last byte
+        header.push(1); // sequence_id
 
-        let mut write_buf: Vec<u8> = Vec::new();
-        write_buf.extend_from_slice(&err_header);
-        write_buf.extend_from_slice(&err_wtr);
+        // combine the vectors
+        header.extend_from_slice(&payload);
 
-        Packet { bytes: write_buf }
+        // now move the vector into the packet
+        Packet { bytes: header }
     }
 
     pub fn sequence_id(&self) -> u8 {
