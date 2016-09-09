@@ -239,7 +239,7 @@ impl ConnReader {
 
                 // shift data down
                 let mut j = 0;
-                for i in s .. self.read_buf.len() {
+                for i in s .. self.read_pos {
                     self.read_buf[j] = self.read_buf[i];
                     j += 1;
                 }
@@ -254,7 +254,6 @@ impl ConnReader {
         }
     }
 }
-
 
 impl ConnWriter {
 
@@ -283,7 +282,7 @@ impl ConnWriter {
             let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
 
             let mut j = 0;
-            for i in s .. self.write_buf.len() {
+            for i in s .. self.write_pos {
                 self.write_buf[j] = self.write_buf[i];
                 j += 1;
             }
