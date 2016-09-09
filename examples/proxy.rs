@@ -74,25 +74,27 @@ impl PacketHandler for MyHandler {
         println!("Request:");
         print_packet_chars(&p.bytes);
 
-        match p.packet_type() {
-            PacketType::ComQuery => {
+//        match p.packet_type() {
+//            PacketType::ComQuery => {
+//
+//                let slice = &p.bytes[5..];
+//                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
+//
+//                println!("SQL: {}", sql);
+//
+//                if sql.contains("avocado") {
+//                    Action::Respond(vec![Packet::error_packet(
+//                                                1064, // error code
+//                                                [0x31,0x32,0x33,0x34,0x35], // sql state
+//                                                String::from("Proxy rejecting any avocado-related queries"))])
+//                } else {
+//                    Action::Forward
+//                }
+//            },
+//            _ => Action::Forward
+//        }
 
-                let slice = &p.bytes[5..];
-                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
-
-                println!("SQL: {}", sql);
-
-                if sql.contains("avocado") {
-                    Action::Respond(vec![Packet::error_packet(
-                                                1064, // error code
-                                                [0x31,0x32,0x33,0x34,0x35], // sql state
-                                                String::from("Proxy rejecting any avocado-related queries"))])
-                } else {
-                    Action::Forward
-                }
-            },
-            _ => Action::Forward
-        }
+        Action::Forward
 
     }
 

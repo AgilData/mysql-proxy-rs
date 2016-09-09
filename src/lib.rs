@@ -244,10 +244,11 @@ impl ConnReader {
                 temp.extend_from_slice( &self.read_buf[0..s]);
                 let p = Packet { bytes: temp };
 
-                // remove this packet from the buffer
-                //TODO: must be more efficient way to do this
-                for _ in 0..s {
-                    self.read_buf.remove(0);
+                // shift data down
+                let mut j = 0;
+                for i in s .. self.read_buf.len() {
+                    self.read_buf[j] = self.read_buf[i];
+                    j += 1;
                 }
                 self.read_pos -= s;
 
@@ -291,14 +292,16 @@ impl ConnWriter{
         println!("{:?} write()", self.direction);
         while self.write_pos > 0 {
             try_ready!(self.stream.poll_write());
-            let m = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
-            println!("{:?} Wrote {} bytes", self.direction, m);
-            // remove this packet from the buffer
-            //TODO: must be more efficient way to do this
-            for _ in 0..m {
-                self.write_buf.remove(0);
+            let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
+            println!("{:?} Wrote {} bytes", self.direction, s);
+
+            let mut j = 0;
+            for i in s .. self.write_buf.len() {
+                self.write_buf[j] = self.write_buf[i];
+                j += 1;
             }
-            self.write_pos -= m;
+            self.write_pos -= s;
+
         }
         return Ok(Async::Ready(()));
     }
