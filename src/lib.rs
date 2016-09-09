@@ -78,7 +78,7 @@ impl Packet {
         payload.extend_from_slice(msg.as_bytes());
 
         // create header with length and sequence id
-        let mut header: Vec<u8> = vec![0_u8; 4];
+        let mut header: Vec<u8> = Vec::with_capacity(4 + 9 + msg.len());
         header.write_u32::<LittleEndian>(payload.len() as u32).unwrap();
         header.pop(); // we need 3 byte length, so discard last byte
         header.push(1); // sequence_id

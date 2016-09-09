@@ -66,7 +66,9 @@ fn main() {
     lp.run(server).unwrap();
 }
 
-struct MyHandler {}
+struct MyHandler {
+
+}
 
 impl MyHandler {
 
