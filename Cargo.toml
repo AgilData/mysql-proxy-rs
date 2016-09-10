@@ -1,7 +1,12 @@
 [package]
 name = "mysql-proxy"
+description = "Extensible MySQL Proxy"
 version = "0.1.0"
 authors = ["Andy Grove <andygrove73@gmail.com>"]
+homepage = "https://github.com/AgilData/mysql-proxy-rs"
+documentation = "https://github.com/AgilData/mysql-proxy-rs"
+repository = "https://github.com/AgilData/mysql-proxy-rs"
+license = "Apache-2.0"
 
 [dependencies]
 log = "0.3"
