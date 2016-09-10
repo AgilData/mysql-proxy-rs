@@ -41,69 +41,6 @@ fn parse_packet_length(header: &[u8]) -> usize {
     ((header[1] as u32) << 8) |
     header[0] as u32) as usize
 }
-struct MyHandler {
-}
-
-impl MyHandler {
-    fn new() -> Self {
-        println!("Created new handler");
-        MyHandler {}
-    }
-}
-
-impl PacketHandler for MyHandler {
-
-    fn handle_request(&self, p: &Packet) -> Action {
-        Action::Forward
-    }
-
-    fn handle_response(&self, p: &Packet) -> Action {
-        Action::Forward
-    }
-
-}
-
-pub struct Proxy {
-    bind: SocketAddr,
-    mysql: SocketAddr,
-}
-
-impl Proxy {
-
-    pub fn new(bind: SocketAddr, mysql: SocketAddr) -> Self {
-        Proxy { bind: bind, mysql: mysql }
-    }
-
-    pub fn run<F, P>(&self, f: F) where P: PacketHandler, F: Fn() -> P {
-
-        // Create the event loop that will drive this server
-        let mut l = Core::new().unwrap();
-        let handle = l.handle();
-
-        // Create a TCP listener which will listen for incoming connections
-        let socket = TcpListener::bind(&self.bind, &l.handle()).unwrap();
-        println!("Listening on: {}", self.bind);
-
-        let done = socket.incoming().for_each(move |(socket, addr)| {
-
-            // connect to MySQL
-            let future = TcpStream::connect(&self.mysql, &handle).and_then(move |mysql| {
-                Ok((socket, mysql))
-            }).and_then(move |(client, server)| {
-                Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new())
-            });
-
-            handle.spawn(future.map_err(|err| {
-                println!("Oh no! Error {:?}", err);
-            }));
-
-            Ok(())
-
-        });
-        l.run(done).unwrap();
-    }
-}
-
 #[derive(Copy,Clone)]
 pub enum PacketType {
     ComSleep = 0x00,
@@ -332,7 +269,7 @@ impl ConnWriter {
     }
 }
 
-struct Pipe<H: PacketHandler + 'static> {
+pub struct Pipe<H: PacketHandler + 'static> {
     client_reader: ConnReader,
     client_writer: ConnWriter,
     server_reader: ConnReader,
@@ -341,7 +278,7 @@ struct Pipe<H: PacketHandler + 'static> {
 }
 
 impl<H> Pipe<H> where H: PacketHandler + 'static {
-    fn new(client: Rc<TcpStream>,
+    pub fn new(client: Rc<TcpStream>,
            server: Rc<TcpStream>,
            handler: H
            ) -> Pipe<H> {
