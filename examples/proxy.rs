@@ -11,54 +11,54 @@ extern crate futures;
 extern crate tokio_core;
 extern crate byteorder;
 
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::env;
-use std::io::{self, Read, Write, Error, ErrorKind};
-use std::net::{SocketAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
-use std::net::Shutdown;
+use std::net::{SocketAddr};
 use std::str;
-use std::time::Duration;
 
-use futures::{Future, Poll, Async};
+use futures::{Future};
 use futures::stream::Stream;
-use tokio_core::net::{TcpStream, TcpStreamNew, TcpListener};
-use tokio_core::io::{copy, Io};
-use tokio_core::reactor::{Core, Handle};
-use byteorder::*;
-
+use tokio_core::net::{TcpStream, TcpListener};
+use tokio_core::reactor::{Core};
 
 fn main() {
 
     env_logger::init().unwrap();
 
+    // determine address for the proxy to bind to
     let bind_addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
     let bind_addr = bind_addr.parse::<SocketAddr>().unwrap();
 
+    // determine address of the MySQL instance we are proxying for
     let mysql_addr = env::args().nth(2).unwrap_or("127.0.0.1:3306".to_string());
     let mysql_addr = mysql_addr.parse::<SocketAddr>().unwrap();
 
-    // Create the event loop that will drive this server
+    // Create the tokio event loop that will drive this server
     let mut l = Core::new().unwrap();
+
+    // Get a reference to the reactor event loop
     let handle = l.handle();
 
     // Create a TCP listener which will listen for incoming connections
     let socket = TcpListener::bind(&bind_addr, &l.handle()).unwrap();
     println!("Listening on: {}", bind_addr);
 
-    let done = socket.incoming().for_each(move |(socket, addr)| {
+    // for each incoming connection
+    let done = socket.incoming().for_each(move |(socket, _)| {
 
-        // connect to MySQL
+        // create a future to serve requests
         let future = TcpStream::connect(&mysql_addr, &handle).and_then(move |mysql| {
             Ok((socket, mysql))
         }).and_then(move |(client, server)| {
             Pipe::new(Rc::new(client), Rc::new(server), DemoHandler {})
         });
 
+        // tell the tokio reactor to run the future
         handle.spawn(future.map_err(|err| {
-            println!("Oh no! Error {:?}", err);
+            println!("Failed to spawn future: {:?}", err);
         }));
 
+        // everything is great!
         Ok(())
 
     });
@@ -74,11 +74,16 @@ impl PacketHandler for DemoHandler {
         match p.packet_type() {
             Ok(PacketType::ComQuery) => {
 
+                // ComQuery packets just contain a SQL string as the payload
                 let slice = &p.bytes[5..];
+
+                // convert the slice to a String object
                 let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
 
+                // log the query
                 println!("SQL: {}", sql);
 
+                // dumb example of conditional proxy behavior
                 if sql.contains("avocado") {
                     // take over processing of this packet and return an error packet
                     // to the client
@@ -87,14 +92,16 @@ impl PacketHandler for DemoHandler {
                                                 [0x31,0x32,0x33,0x34,0x35], // sql state
                                                 String::from("Proxy rejecting any avocado-related queries"))])
                 } else {
+                    // pass the packet to MySQL unmodified
                     Action::Forward
                 }
             },
+            // pass the packet to MySQL unmodified
             _ => Action::Forward
         }
     }
 
-    fn handle_response(&self, p: &Packet) -> Action {
+    fn handle_response(&self, _: &Packet) -> Action {
         // forward all responses to the client
         Action::Forward
     }

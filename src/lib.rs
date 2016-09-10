@@ -9,20 +9,12 @@ extern crate futures;
 extern crate tokio_core;
 extern crate byteorder;
 
-use std::cell::RefCell;
 use std::rc::Rc;
-use std::env;
 use std::io::{self, Read, Write, Error, ErrorKind};
-use std::net::{SocketAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::net::Shutdown;
-use std::str;
-use std::time::Duration;
 
 use futures::{Future, Poll, Async};
-use futures::stream::Stream;
-use tokio_core::net::{TcpStream, TcpStreamNew, TcpListener};
-use tokio_core::io::{copy, Io};
-use tokio_core::reactor::{Core, Handle};
+use tokio_core::net::{TcpStream};
 use byteorder::*;
 
 /// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
@@ -76,6 +68,7 @@ impl Packet {
         self.bytes[3]
     }
 
+    /// Determine the type of packet
     pub fn packet_type(&self) -> Result<PacketType, Error> {
         match self.bytes[4] {
             0x00 => Ok(PacketType::ComSleep),
@@ -148,37 +141,28 @@ pub enum PacketType {
     ComResetConnection = 0x1f,
 }
 
-#[derive(Debug)]
-enum Direction {
-    Client,
-    Server
-}
 
+/// Wrapper for TcpStream with some built-in buffering
 struct ConnReader {
-    direction: Direction,
     stream: Rc<TcpStream>,
     read_buf: Vec<u8>,
     read_pos: usize,
-    read_amt: u64,
 }
 
+/// Wrapper for TcpStream with some built-in buffering
 struct ConnWriter {
-    direction: Direction,
     stream: Rc<TcpStream>,
     write_buf: Vec<u8>,
     write_pos: usize,
-    write_amt: u64,
 }
 
 impl ConnReader {
 
-    fn new(stream: Rc<TcpStream>, direction: Direction) -> Self {
+    fn new(stream: Rc<TcpStream>) -> Self {
         ConnReader {
             stream: stream,
-            direction: direction,
             read_buf: vec![0u8; 4096],
             read_pos: 0,
-            read_amt: 0,
         }
     }
 
@@ -192,7 +176,6 @@ impl ConnReader {
                     if n == 0 {
                         return Err(Error::new(ErrorKind::Other, "connection closed"));
                     }
-                    self.read_amt += n as u64;
                     self.read_pos += n;
                 },
                 _ => return Ok(Async::NotReady),
@@ -231,13 +214,11 @@ impl ConnReader {
 
 impl ConnWriter {
 
-    fn new(stream: Rc<TcpStream>, direction: Direction) -> Self {
+    fn new(stream: Rc<TcpStream>) -> Self {
         ConnWriter{
             stream: stream,
-            direction: direction,
             write_buf: vec![0u8; 4096],
             write_pos: 0,
-            write_amt: 0
         }
     }
 
@@ -285,10 +266,10 @@ impl<H> Pipe<H> where H: PacketHandler + 'static {
            ) -> Pipe<H> {
 
         Pipe {
-            client_reader: ConnReader::new(client.clone(), Direction::Client),
-            client_writer: ConnWriter::new(client, Direction::Client),
-            server_reader: ConnReader::new(server.clone(), Direction::Server),
-            server_writer: ConnWriter::new(server, Direction::Server),
+            client_reader: ConnReader::new(client.clone()),
+            client_writer: ConnWriter::new(client),
+            server_reader: ConnReader::new(server.clone()),
+            server_writer: ConnWriter::new(server),
             handler: handler,
         }
     }
@@ -362,6 +343,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
 }
 
+/// Parse the MySQL packet length (3 byte little-endian)
 fn parse_packet_length(header: &[u8]) -> usize {
     (((header[2] as u32) << 16) |
         ((header[1] as u32) << 8) |
