@@ -170,23 +170,20 @@ impl PacketHandler for MyHandler {
 }
 
 pub struct Proxy {
+    bind: SocketAddr
 }
 
 impl Proxy {
 
-    pub fn run() {
-
-        env_logger::init().unwrap();
-        let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
-        let addr = addr.parse::<SocketAddr>().unwrap();
+    pub fn run(&self) {
 
         // Create the event loop that will drive this server
         let mut l = Core::new().unwrap();
         let handle = l.handle();
 
         // Create a TCP listener which will listen for incoming connections
-        let socket = TcpListener::bind(&addr, &l.handle()).unwrap();
-        println!("Listening on: {}", addr);
+        let socket = TcpListener::bind(&self.bind, &l.handle()).unwrap();
+        println!("Listening on: {}", self.bind);
 
         let done = socket.incoming().for_each(move |(socket, addr)| {
 
@@ -428,24 +425,5 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
     }
 
-}
-
-#[allow(dead_code)]
-pub fn print_packet_chars(buf: &[u8]) {
-    print!("[");
-    for i in 0..buf.len() {
-        print!("{} ", buf[i] as char);
-    }
-    println!("]");
-}
-
-#[allow(dead_code)]
-pub fn print_packet_bytes(buf: &[u8]) {
-    print!("[");
-    for i in 0..buf.len() {
-        if i%8==0 { println!(""); }
-        print!("{:#04x} ",buf[i]);
-    }
-    println!("]");
 }
 
