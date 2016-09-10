@@ -29,41 +29,26 @@ use tokio_core::io::{read_exact, write_all, Window};
 
 
 fn main() {
-    drop(env_logger::init());
+    let addr: SocketAddr = "127.0.0.1:3307".parse().unwrap();
 
-    let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
-    let addr = addr.parse::<SocketAddr>().unwrap();
+    let mut reactor = reactor::Core::new().unwrap();
+    let handle = reactor.handle();
+    let listener = TcpListener::bind(&addr, &handle).unwrap();
 
-    let mut lp = Loop::new().unwrap();
-    let pool = CpuPool::new(8);
-    let buffer = Rc::new(RefCell::new(vec![0; 64 * 1024]));
-    let handle = lp.handle();
-    let listener = lp.run(handle.clone().tcp_listen(&addr)).unwrap();
-    let pin = lp.pin();
+    println!("Running server on {}", addr);
 
-    println!("Listening for MySQL proxy connections on {}", addr);
-    let clients = listener.incoming().map(move |(socket, addr)| {
-        (Client {
-            pool: pool.clone(),
-            handle: handle.clone(),
-        }.serve(socket,
-                MyHandler::new() // our packet handler
-        ), addr)
-    });
-    let server = clients.for_each(|(client, addr)| {
-        pin.spawn(client.then(move |res| {
-            match res {
-                Ok((a, b)) => {
-                    println!("proxied {}/{} bytes for {}", a, b, addr)
-                }
-                Err(e) => println!("error for {}: {}", addr, e),
-            }
-            futures::finished(())
-        }));
+    reactor.run(listener.incoming().for_each(move |(socket, _)| {
+
+        let client = Client {
+            handle: handle.clone()
+        };
+
+//        handle.spawn(connection.map_err(|err| {
+//            println!("Oh no! Error {:?}", err);
+//        }));
+
         Ok(())
-    });
-
-    lp.run(server).unwrap();
+    })).unwrap();
 }
 
 struct MyHandler {
