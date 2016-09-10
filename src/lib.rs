@@ -193,15 +193,17 @@ impl ConnReader {
                 let mut temp : Vec<u8> = Vec::with_capacity(s);
                 temp.extend_from_slice(&self.read_buf[0..s]);
                 let p = Packet { bytes: temp };
-
-                // shift data down
-                let mut j = 0;
-                for i in s .. self.read_pos {
-                    self.read_buf[j] = self.read_buf[i];
-                    j += 1;
+                if self.read_pos == s {
+                    self.read_pos = 0;
+                } else {
+                    // shift data down
+                    let mut j = 0;
+                    for i in s .. self.read_pos {
+                        self.read_buf[j] = self.read_buf[i];
+                        j += 1;
+                    }
+                    self.read_pos -= s;
                 }
-                self.read_pos -= s;
-
                 Some(p)
             } else {
                 None
@@ -236,13 +238,18 @@ impl ConnWriter {
             match self.stream.poll_write() {
                 Async::Ready(_) => {
                     let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
-
-                    let mut j = 0;
-                    for i in s..self.write_pos {
-                        self.write_buf[j] = self.write_buf[i];
-                        j += 1;
+                    if s == self.write_pos {
+                        self.write_pos = 0;
+                    } else {
+                        // for a partial write, shift data down
+                        let mut j = 0;
+                        for i in s..self.write_pos {
+                            self.write_buf[j] = self.write_buf[i];
+                            j += 1;
+                        }
+                        self.write_pos -= s;
                     }
-                    self.write_pos -= s;
+
                 },
                 _ => return Ok(Async::NotReady)
             }
