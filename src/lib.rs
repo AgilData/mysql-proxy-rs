@@ -176,7 +176,7 @@ pub struct Proxy {
 
 impl Proxy {
 
-    pub fn run(&self) {
+    pub fn run<F, P>(&self, f: F) where P: PacketHandler, F: Fn() -> P {
 
         // Create the event loop that will drive this server
         let mut l = Core::new().unwrap();
@@ -189,16 +189,11 @@ impl Proxy {
         let done = socket.incoming().for_each(move |(socket, addr)| {
 
             // connect to MySQL
-
             let future = TcpStream::connect(&addr, &handle).and_then(move |mysql| {
                 Ok((socket, mysql))
             }).and_then(move |(client, server)| {
-//                Ok(
-                    Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new())
-//                )
+                Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new())
             });
-
-//            let () = future.map_err();
 
             handle.spawn(future.map_err(|err| {
                 println!("Oh no! Error {:?}", err);
