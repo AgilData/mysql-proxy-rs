@@ -6,10 +6,20 @@ use mysql_proxy::*;
 fn main() {
 
     env_logger::init().unwrap();
-    let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
-    let addr = addr.parse::<SocketAddr>().unwrap();
 
-    let proxy = Proxy { bind: addr };
+    let bind_addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
+    let bind_addr = addr.parse::<SocketAddr>().unwrap();
+
+    let mysql_addr = env::args().nth(2).unwrap_or("127.0.0.1:3306".to_string());
+    let mysql_addr = addr.parse::<SocketAddr>().unwrap();
+
+    /*
+            let addr = Ipv4Addr::new(127, 0, 0, 1);
+            let port = 3306;
+            let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
+            */
+
+    let proxy = Proxy { bind: bind_addr, mysql: mysql_addr };
 
     proxy.run();
 }

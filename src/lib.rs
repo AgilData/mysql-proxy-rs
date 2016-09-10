@@ -170,7 +170,8 @@ impl PacketHandler for MyHandler {
 }
 
 pub struct Proxy {
-    bind: SocketAddr
+    bind: SocketAddr,
+    mysql: SocketAddr,
 }
 
 impl Proxy {
@@ -188,9 +189,6 @@ impl Proxy {
         let done = socket.incoming().for_each(move |(socket, addr)| {
 
             // connect to MySQL
-            let addr = Ipv4Addr::new(127, 0, 0, 1);
-            let port = 3306;
-            let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
 
             let future = TcpStream::connect(&addr, &handle).and_then(move |mysql| {
                 Ok((socket, mysql))
