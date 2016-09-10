@@ -255,14 +255,18 @@ impl ConnReader {
     /// Read from the socket until the status is NotReady
     fn read(&mut self) -> Poll<(), io::Error> {
         loop {
-            try_ready!(self.stream.poll_read());
-            //TODO: ensure capacity first
-            let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
-            if n == 0 {
-                return Err(Error::new(ErrorKind::Other, "connection closed"));
+            match self.stream.poll_read() {
+                Async::Ready(_) => {
+                    //TODO: ensure capacity first
+                    let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
+                    if n == 0 {
+                        return Err(Error::new(ErrorKind::Other, "connection closed"));
+                    }
+                    self.read_amt += n as u64;
+                    self.read_pos += n;
+                },
+                _ => return Ok(Async::NotReady),
             }
-            self.read_amt += n as u64;
-            self.read_pos += n;
         }
     }
 
@@ -318,16 +322,19 @@ impl ConnWriter {
     /// Writes the contents of the write buffer to the socket
     fn write(&mut self) -> Poll<(), io::Error> {
         while self.write_pos > 0 {
-            try_ready!(self.stream.poll_write());
-            let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
+            match self.stream.poll_write() {
+                Async::Ready(_) => {
+                    let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
 
-            let mut j = 0;
-            for i in s .. self.write_pos {
-                self.write_buf[j] = self.write_buf[i];
-                j += 1;
+                    let mut j = 0;
+                    for i in s..self.write_pos {
+                        self.write_buf[j] = self.write_buf[i];
+                        j += 1;
+                    }
+                    self.write_pos -= s;
+                },
+                _ => return Ok(Async::NotReady)
             }
-            self.write_pos -= s;
-
         }
         return Ok(Async::Ready(()));
     }
