@@ -1,19 +1,26 @@
 //! MySQL Proxy Server
 extern crate mysql_proxy;
-
 use mysql_proxy::*;
+
+#[macro_use]
+extern crate log;
+extern crate env_logger;
+
+use std::env;
+use std::net::{SocketAddr};
+
 
 fn main() {
 
     env_logger::init().unwrap();
 
     let bind_addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
-    let bind_addr = addr.parse::<SocketAddr>().unwrap();
+    let bind_addr = bind_addr.parse::<SocketAddr>().unwrap();
 
     let mysql_addr = env::args().nth(2).unwrap_or("127.0.0.1:3306".to_string());
-    let mysql_addr = addr.parse::<SocketAddr>().unwrap();
+    let mysql_addr = mysql_addr.parse::<SocketAddr>().unwrap();
 
-    let proxy = Proxy { bind: bind_addr, mysql: mysql_addr };
+    let proxy = Proxy::new(bind_addr, mysql_addr);
 
     let handler_factory = || { PassthroughHandler {} };
 
@@ -26,12 +33,12 @@ struct PassthroughHandler {}
 impl PacketHandler for PassthroughHandler {
 
     fn handle_request(&self, p: &Packet) -> Action {
-        print_packet_chars(&p);
+        print_packet_chars(&p.bytes);
         Action::Forward
     }
 
     fn handle_response(&self, p: &Packet) -> Action {
-        print_packet_chars(&p);
+        print_packet_chars(&p.bytes);
         Action::Forward
     }
 
