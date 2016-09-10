@@ -179,7 +179,7 @@ impl Proxy {
     pub fn run<H>(handler: H) where H: PacketHandler {
 
         env_logger::init().unwrap();
-        let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
+        let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
         let addr = addr.parse::<SocketAddr>().unwrap();
 
         // Create the event loop that will drive this server
@@ -197,15 +197,19 @@ impl Proxy {
             let port = 3306;
             let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
 
-            let foo = TcpStream::connect(&addr, &handle).and_then(move |mysql| {
+            let future = TcpStream::connect(&addr, &handle).and_then(move |mysql| {
                 Ok((socket, mysql))
             }).and_then(move |(client, server)| {
-                Ok(Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new()))
+//                Ok(
+                    Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new())
+//                )
             });
 
-//            handle.spawn(foo.map_err(|e| {
-//                panic!("Error: {}", e);
-//            }));
+//            let () = future.map_err();
+
+            handle.spawn(future.map_err(|err| {
+                println!("Oh no! Error {:?}", err);
+            }));
 
             Ok(())
 
@@ -361,10 +365,10 @@ impl<H> Pipe<H> where H: PacketHandler + 'static {
 }
 
 impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
-    type Item = (u64, u64);
+    type Item = ();
     type Error = Error;
 
-    fn poll(&mut self) -> Poll<(u64, u64), io::Error> {
+    fn poll(&mut self) -> Poll<(), Error> {
         loop {
             let client_read = self.client_reader.read();
 
