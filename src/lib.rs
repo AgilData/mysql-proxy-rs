@@ -1,4 +1,4 @@
-//! MySQL Proxy Server
+//! An extensible MySQL Proxy Server based on tokio-core
 
 #[macro_use]
 extern crate log;
@@ -25,22 +25,95 @@ use tokio_core::io::{copy, Io};
 use tokio_core::reactor::{Core, Handle};
 use byteorder::*;
 
+/// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
 pub enum Action {
-    Forward,                // forward the packet unmodified
-    Mutate(Packet),         // mutate the packet
-    Respond(Vec<Packet>)    // handle directly and optionally return some packets
+    /// forward the packet unmodified
+    Forward,
+    /// forward a mutated packet
+    Mutate(Packet),
+    /// respond to the packet without forwarding
+    Respond(Vec<Packet>)
 }
 
+/// Packet handlers need to implement this trait
 pub trait PacketHandler {
     fn handle_request(&self, p: &Packet) -> Action;
     fn handle_response(&self, p: &Packet) -> Action;
 }
 
-fn parse_packet_length(header: &[u8]) -> usize {
-    (((header[2] as u32) << 16) |
-    ((header[1] as u32) << 8) |
-    header[0] as u32) as usize
+/// A packet is just a wrapper for a Vec<u8>
+pub struct Packet {
+    pub bytes: Vec<u8>
 }
+
+impl Packet {
+
+    /// Create an error packet
+    pub fn error_packet(code: u16, state: [u8; 5], msg: String) -> Self {
+
+        // start building payload
+        let mut payload: Vec<u8> = Vec::with_capacity(9 + msg.len());
+        payload.push(0xff);  // packet type
+        payload.write_u16::<LittleEndian>(code).unwrap(); // error code
+        payload.extend_from_slice("#".as_bytes()); // sql_state_marker
+        payload.extend_from_slice(&state); // SQL STATE
+        payload.extend_from_slice(msg.as_bytes());
+
+        // create header with length and sequence id
+        let mut header: Vec<u8> = Vec::with_capacity(4 + 9 + msg.len());
+        header.write_u32::<LittleEndian>(payload.len() as u32).unwrap();
+        header.pop(); // we need 3 byte length, so discard last byte
+        header.push(1); // sequence_id
+
+        // combine the vectors
+        header.extend_from_slice(&payload);
+
+        // now move the vector into the packet
+        Packet { bytes: header }
+    }
+
+    pub fn sequence_id(&self) -> u8 {
+        self.bytes[3]
+    }
+
+    pub fn packet_type(&self) -> Result<PacketType, Error> {
+        match self.bytes[4] {
+            0x00 => Ok(PacketType::ComSleep),
+            0x01 => Ok(PacketType::ComQuit),
+            0x02 => Ok(PacketType::ComInitDb),
+            0x03 => Ok(PacketType::ComQuery),
+            0x04 => Ok(PacketType::ComFieldList),
+            0x05 => Ok(PacketType::ComCreateDb),
+            0x06 => Ok(PacketType::ComDropDb),
+            0x07 => Ok(PacketType::ComRefresh),
+            0x08 => Ok(PacketType::ComShutdown),
+            0x09 => Ok(PacketType::ComStatistics),
+            0x0a => Ok(PacketType::ComProcessInfo),
+            0x0b => Ok(PacketType::ComConnect),
+            0x0c => Ok(PacketType::ComProcessKill),
+            0x0d => Ok(PacketType::ComDebug),
+            0x0e => Ok(PacketType::ComPing),
+            0x0f => Ok(PacketType::ComTime),
+            0x10 => Ok(PacketType::ComDelayedInsert),
+            0x11 => Ok(PacketType::ComChangeUser),
+            0x12 => Ok(PacketType::ComBinlogDump),
+            0x13 => Ok(PacketType::ComTableDump),
+            0x14 => Ok(PacketType::ComConnectOut),
+            0x15 => Ok(PacketType::ComRegisterSlave),
+            0x16 => Ok(PacketType::ComStmtPrepare),
+            0x17 => Ok(PacketType::ComStmtExecute),
+            0x18 => Ok(PacketType::ComStmtSendLongData),
+            0x19 => Ok(PacketType::ComStmtClose),
+            0x1a => Ok(PacketType::ComStmtReset),
+            0x1d => Ok(PacketType::ComDaemon),
+            0x1e => Ok(PacketType::ComBinlogDumpGtid),
+            0x1f => Ok(PacketType::ComResetConnection),
+            _ => Err(Error::new(ErrorKind::Other, "Invalid packet type"))
+        }
+    }
+
+}
+
 #[derive(Copy,Clone)]
 pub enum PacketType {
     ComSleep = 0x00,
@@ -73,78 +146,6 @@ pub enum PacketType {
     ComDaemon= 0x1d,
     ComBinlogDumpGtid = 0x1e,
     ComResetConnection = 0x1f,
-}
-
-pub struct Packet {
-    pub bytes: Vec<u8>
-}
-
-impl Packet {
-
-    pub fn error_packet(code: u16, state: [u8; 5], msg: String) -> Self {
-
-        // start building payload
-        let mut payload: Vec<u8> = Vec::with_capacity(9 + msg.len());
-        payload.push(0xff);  // packet type
-        payload.write_u16::<LittleEndian>(code).unwrap(); // error code
-        payload.extend_from_slice("#".as_bytes()); // sql_state_marker
-        payload.extend_from_slice(&state); // SQL STATE
-        payload.extend_from_slice(msg.as_bytes());
-
-        // create header with length and sequence id
-        let mut header: Vec<u8> = Vec::with_capacity(4 + 9 + msg.len());
-        header.write_u32::<LittleEndian>(payload.len() as u32).unwrap();
-        header.pop(); // we need 3 byte length, so discard last byte
-        header.push(1); // sequence_id
-
-        // combine the vectors
-        header.extend_from_slice(&payload);
-
-        // now move the vector into the packet
-        Packet { bytes: header }
-    }
-
-    pub fn sequence_id(&self) -> u8 {
-        self.bytes[3]
-    }
-
-    //TODO: should return Result<PacketType, ?>
-    pub fn packet_type(&self) -> PacketType {
-        match self.bytes[4] {
-            0x00 => PacketType::ComSleep,
-            0x01 => PacketType::ComQuit,
-            0x02 => PacketType::ComInitDb,
-            0x03 => PacketType::ComQuery,
-            0x04 => PacketType::ComFieldList,
-            0x05 => PacketType::ComCreateDb,
-            0x06 => PacketType::ComDropDb,
-            0x07 => PacketType::ComRefresh,
-            0x08 => PacketType::ComShutdown,
-            0x09 => PacketType::ComStatistics,
-            0x0a => PacketType::ComProcessInfo,
-            0x0b => PacketType::ComConnect,
-            0x0c => PacketType::ComProcessKill,
-            0x0d => PacketType::ComDebug,
-            0x0e => PacketType::ComPing,
-            0x0f => PacketType::ComTime,
-            0x10 => PacketType::ComDelayedInsert,
-            0x11 => PacketType::ComChangeUser,
-            0x12 => PacketType::ComBinlogDump,
-            0x13 => PacketType::ComTableDump,
-            0x14 => PacketType::ComConnectOut,
-            0x15 => PacketType::ComRegisterSlave,
-            0x16 => PacketType::ComStmtPrepare,
-            0x17 => PacketType::ComStmtExecute,
-            0x18 => PacketType::ComStmtSendLongData,
-            0x19 => PacketType::ComStmtClose,
-            0x1a => PacketType::ComStmtReset,
-            0x1d => PacketType::ComDaemon,
-            0x1e => PacketType::ComBinlogDumpGtid,
-            0x1f => PacketType::ComResetConnection,
-            _ => panic!("Unsupported packet type")
-        }
-    }
-
 }
 
 #[derive(Debug)]
@@ -361,3 +362,8 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
 }
 
+fn parse_packet_length(header: &[u8]) -> usize {
+    (((header[2] as u32) << 16) |
+        ((header[1] as u32) << 8) |
+        header[0] as u32) as usize
+}

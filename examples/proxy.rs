@@ -71,8 +71,8 @@ impl PacketHandler for DemoHandler {
 
     fn handle_request(&self, p: &Packet) -> Action {
         print_packet_chars(&p.bytes);
-        match p.bytes[4] {
-            0x03 => {
+        match p.packet_type() {
+            Ok(PacketType::ComQuery) => {
 
                 let slice = &p.bytes[5..];
                 let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
@@ -80,6 +80,8 @@ impl PacketHandler for DemoHandler {
                 println!("SQL: {}", sql);
 
                 if sql.contains("avocado") {
+                    // take over processing of this packet and return an error packet
+                    // to the client
                     Action::Respond(vec![Packet::error_packet(
                                                 1064, // error code
                                                 [0x31,0x32,0x33,0x34,0x35], // sql state
