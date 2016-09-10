@@ -70,35 +70,36 @@ struct DemoHandler {}
 impl PacketHandler for DemoHandler {
 
     fn handle_request(&self, p: &Packet) -> Action {
-        print_packet_chars(&p.bytes);
-        match p.packet_type() {
-            Ok(PacketType::ComQuery) => {
-
-                // ComQuery packets just contain a SQL string as the payload
-                let slice = &p.bytes[5..];
-
-                // convert the slice to a String object
-                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
-
-                // log the query
-                println!("SQL: {}", sql);
-
-                // dumb example of conditional proxy behavior
-                if sql.contains("avocado") {
-                    // take over processing of this packet and return an error packet
-                    // to the client
-                    Action::Respond(vec![Packet::error_packet(
-                                                1064, // error code
-                                                [0x31,0x32,0x33,0x34,0x35], // sql state
-                                                String::from("Proxy rejecting any avocado-related queries"))])
-                } else {
-                    // pass the packet to MySQL unmodified
-                    Action::Forward
-                }
-            },
-            // pass the packet to MySQL unmodified
-            _ => Action::Forward
-        }
+//        print_packet_chars(&p.bytes);
+//        match p.packet_type() {
+//            Ok(PacketType::ComQuery) => {
+//
+//                // ComQuery packets just contain a SQL string as the payload
+//                let slice = &p.bytes[5..];
+//
+//                // convert the slice to a String object
+//                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
+//
+//                // log the query
+//                println!("SQL: {}", sql);
+//
+//                // dumb example of conditional proxy behavior
+//                if sql.contains("avocado") {
+//                    // take over processing of this packet and return an error packet
+//                    // to the client
+//                    Action::Respond(vec![Packet::error_packet(
+//                                                1064, // error code
+//                                                [0x31,0x32,0x33,0x34,0x35], // sql state
+//                                                String::from("Proxy rejecting any avocado-related queries"))])
+//                } else {
+//                    // pass the packet to MySQL unmodified
+//                    Action::Forward
+//                }
+//            },
+//            // pass the packet to MySQL unmodified
+//            _ => Action::Forward
+//        }
+        Action::Forward
     }
 
     fn handle_response(&self, _: &Packet) -> Action {

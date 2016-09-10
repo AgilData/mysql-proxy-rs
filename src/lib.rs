@@ -193,15 +193,17 @@ impl ConnReader {
                 let mut temp : Vec<u8> = Vec::with_capacity(s);
                 temp.extend_from_slice(&self.read_buf[0..s]);
                 let p = Packet { bytes: temp };
-
-                // shift data down
-                let mut j = 0;
-                for i in s .. self.read_pos {
-                    self.read_buf[j] = self.read_buf[i];
-                    j += 1;
+                if self.read_pos == s {
+                    self.read_pos = 0;
+                } else {
+                    // shift data down
+                    let mut j = 0;
+                    for i in s .. self.read_pos {
+                        self.read_buf[j] = self.read_buf[i];
+                        j += 1;
+                    }
+                    self.read_pos -= s;
                 }
-                self.read_pos -= s;
-
                 Some(p)
             } else {
                 None
@@ -236,13 +238,18 @@ impl ConnWriter {
             match self.stream.poll_write() {
                 Async::Ready(_) => {
                     let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
-
-                    let mut j = 0;
-                    for i in s..self.write_pos {
-                        self.write_buf[j] = self.write_buf[i];
-                        j += 1;
+                    if s == self.write_pos {
+                        self.write_pos = 0;
+                    } else {
+                        // for a partial write, shift data down
+                        let mut j = 0;
+                        for i in s..self.write_pos {
+                            self.write_buf[j] = self.write_buf[i];
+                            j += 1;
+                        }
+                        self.write_pos -= s;
                     }
-                    self.write_pos -= s;
+
                 },
                 _ => return Ok(Async::NotReady)
             }
@@ -292,12 +299,19 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // process buffered requests
             while let Some(request) = self.client_reader.next() {
                 match self.handler.handle_request(&request) {
-                    Action::Forward => self.server_writer.push(&request),
-                    Action::Mutate(ref p2) => self.server_writer.push(p2),
+                    Action::Forward => {
+                        self.server_writer.push(&request);
+                        self.server_writer.write();
+                    } ,
+                    Action::Mutate(ref p2) => {
+                        self.server_writer.push(p2);
+                        self.server_writer.write();
+                    },
                     Action::Respond(ref v) => {
                         for p in v {
                             self.client_writer.push(&p);
                         }
+                        self.client_writer.write();
                     }
                 };
             }
@@ -314,14 +328,22 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // process buffered responses
             while let Some(response) = self.server_reader.next() {
                 match self.handler.handle_response(&response) {
-                    Action::Forward => self.client_writer.push(&response),
-                    Action::Mutate(ref p2) => self.client_writer.push(p2),
+                    Action::Forward => {
+                        self.client_writer.push(&response);
+                        self.client_writer.write();
+                    },
+                    Action::Mutate(ref p2) => {
+                        self.client_writer.push(p2);
+                        self.client_writer.write();
+                    },
                     Action::Respond(ref v) => {
                         for p in v {
                             self.server_writer.push(&p);
                         }
+                        self.server_writer.write();
                     }
                 };
+
             }
 
             // perform all of the writes at the end, since the request handlers may have
