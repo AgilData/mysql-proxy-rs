@@ -7,7 +7,6 @@ extern crate env_logger;
 extern crate futures;
 #[macro_use]
 extern crate tokio_core;
-extern crate futures_cpupool;
 extern crate byteorder;
 
 use std::cell::RefCell;
@@ -21,7 +20,6 @@ use std::time::Duration;
 
 use futures::{Future, Poll, Async};
 use futures::stream::Stream;
-use futures_cpupool::CpuPool;
 use tokio_core::net::{TcpStream, TcpStreamNew, TcpListener};
 use tokio_core::io::{copy, Io};
 use tokio_core::reactor::{Core, Handle};
