@@ -149,6 +149,27 @@ fn parse_packet_length(header: &[u8]) -> usize {
     ((header[1] as u32) << 8) |
     header[0] as u32) as usize
 }
+struct MyHandler {
+}
+
+impl MyHandler {
+    fn new() -> Self {
+        println!("Created new handler");
+        MyHandler {}
+    }
+}
+
+impl PacketHandler for MyHandler {
+
+    fn handle_request(&self, p: &Packet) -> Action {
+        Action::Forward
+    }
+
+    fn handle_response(&self, p: &Packet) -> Action {
+        Action::Forward
+    }
+
+}
 
 pub struct Proxy {
 }
@@ -167,58 +188,29 @@ impl Proxy {
 
         // Create a TCP listener which will listen for incoming connections
         let socket = TcpListener::bind(&addr, &l.handle()).unwrap();
-
-        // Once we've got the TCP listener, inform that we have it
         println!("Listening on: {}", addr);
 
-        // Pull out the stream of incoming connections and then for each new
-        // one spin up a new task copying data.
-        //
-        // We use the `io::copy` future to copy all data from the
-        // reading half onto the writing half.
         let done = socket.incoming().for_each(move |(socket, addr)| {
 
-            // create a future to connect to MySQL
-            let connected = Proxy::connect_mysql(&handle);
+            // connect to MySQL
+            let addr = Ipv4Addr::new(127, 0, 0, 1);
+            let port = 3306;
+            let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
 
-            // map to tuple containing client and server
-            let pair = connected.and_then(move |server| Ok((socket, server)));
-
-            // map to a pipe that connects the client and server
-            let pipe = pair.and_then(move |(client, server)| {
-                Pipe::new(Rc::new(client), Rc::new(server), handler)
+            let foo = TcpStream::connect(&addr, &handle).and_then(move |mysql| {
+                Ok((socket, mysql))
+            }).and_then(move |(client, server)| {
+                Ok(Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new()))
             });
 
-            //        handle.spawn(pipe.map_err(|e| {
-            //            panic!("Error: {}", e);
-            //        }));
+//            handle.spawn(foo.map_err(|e| {
+//                panic!("Error: {}", e);
+//            }));
 
             Ok(())
+
         });
         l.run(done).unwrap();
-
-            //            let pair = futures::lazy(|| futures::finished(socket.split()));
-//            let amt = pair.and_then(|(reader, writer)| copy(reader, writer));
-//
-//            // Once all that is done we print out how much we wrote, and then
-//            // critically we *spawn* this future which allows it to run
-//            // concurrently with other connections.
-//            let msg = amt.map(move |amt| {
-//                println!("wrote {} bytes to {}", amt, addr)
-//            }).map_err(|e| {
-//                panic!("error: {}", e);
-//            });
-//            handle.spawn(msg);
-
-//            Ok(())
-//        });
-    }
-
-    pub fn connect_mysql(handle: &Handle) -> TcpStreamNew {
-        let addr = Ipv4Addr::new(127, 0, 0, 1);
-        let port = 3306;
-        let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
-        TcpStream::connect(&addr, &handle)
     }
 }
 
