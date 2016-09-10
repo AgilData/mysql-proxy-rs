@@ -22,9 +22,9 @@ use std::time::Duration;
 use futures::{Future, Poll, Async};
 use futures::stream::Stream;
 use futures_cpupool::CpuPool;
-use tokio_core::{Loop, LoopHandle, TcpStream};
-use tokio_core::io::{read_exact, write_all, Window};
-
+use tokio_core::net::{TcpStream, TcpStreamNew, TcpListener};
+use tokio_core::io::{copy, Io};
+use tokio_core::reactor::{Core, Handle};
 use byteorder::*;
 
 #[derive(Copy,Clone)]
@@ -149,32 +149,72 @@ fn parse_packet_length(header: &[u8]) -> usize {
     ((header[1] as u32) << 8) |
     header[0] as u32) as usize
 }
-
-pub struct Client {
-    pub pool: CpuPool,
-    pub handle: LoopHandle,
+struct MyHandler {
 }
 
-impl Client {
+impl MyHandler {
+    fn new() -> Self {
+        println!("Created new handler");
+        MyHandler {}
+    }
+}
 
-    pub fn serve<H: PacketHandler + 'static>(self, conn: TcpStream,
-                                             handler: H,
-                                        ) -> Box<Future<Item = (u64, u64), Error = Error>> {
+impl PacketHandler for MyHandler {
 
-        let addr = Ipv4Addr::new(127, 0, 0, 1);
-        let port = 3306;
-        let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
+    fn handle_request(&self, p: &Packet) -> Action {
+        Action::Forward
+    }
 
-        let handle = self.handle.clone();
-        let connected = handle.tcp_connect(&addr);
+    fn handle_response(&self, p: &Packet) -> Action {
+        Action::Forward
+    }
 
-        let pair = connected.and_then(move |server| Ok((conn,server)));
+}
 
-        Box::new(pair.and_then(move |(c1, c2)| {
-            let c1 = Rc::new(c1);
-            let c2 = Rc::new(c2);
-            Pipe::new(c1, c2, handler)
-        }))
+pub struct Proxy {
+}
+
+impl Proxy {
+
+    pub fn run() {
+
+        env_logger::init().unwrap();
+        let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
+        let addr = addr.parse::<SocketAddr>().unwrap();
+
+        // Create the event loop that will drive this server
+        let mut l = Core::new().unwrap();
+        let handle = l.handle();
+
+        // Create a TCP listener which will listen for incoming connections
+        let socket = TcpListener::bind(&addr, &l.handle()).unwrap();
+        println!("Listening on: {}", addr);
+
+        let done = socket.incoming().for_each(move |(socket, addr)| {
+
+            // connect to MySQL
+            let addr = Ipv4Addr::new(127, 0, 0, 1);
+            let port = 3306;
+            let addr = SocketAddr::V4(SocketAddrV4::new(addr, port));
+
+            let future = TcpStream::connect(&addr, &handle).and_then(move |mysql| {
+                Ok((socket, mysql))
+            }).and_then(move |(client, server)| {
+//                Ok(
+                    Pipe::new(Rc::new(client), Rc::new(server), MyHandler::new())
+//                )
+            });
+
+//            let () = future.map_err();
+
+            handle.spawn(future.map_err(|err| {
+                println!("Oh no! Error {:?}", err);
+            }));
+
+            Ok(())
+
+        });
+        l.run(done).unwrap();
     }
 }
 
@@ -215,14 +255,18 @@ impl ConnReader {
     /// Read from the socket until the status is NotReady
     fn read(&mut self) -> Poll<(), io::Error> {
         loop {
-            try_ready!(self.stream.poll_read());
-            //TODO: ensure capacity first
-            let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
-            if n == 0 {
-                return Err(Error::new(ErrorKind::Other, "connection closed"));
+            match self.stream.poll_read() {
+                Async::Ready(_) => {
+                    //TODO: ensure capacity first
+                    let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
+                    if n == 0 {
+                        return Err(Error::new(ErrorKind::Other, "connection closed"));
+                    }
+                    self.read_amt += n as u64;
+                    self.read_pos += n;
+                },
+                _ => return Ok(Async::NotReady),
             }
-            self.read_amt += n as u64;
-            self.read_pos += n;
         }
     }
 
@@ -278,16 +322,19 @@ impl ConnWriter {
     /// Writes the contents of the write buffer to the socket
     fn write(&mut self) -> Poll<(), io::Error> {
         while self.write_pos > 0 {
-            try_ready!(self.stream.poll_write());
-            let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
+            match self.stream.poll_write() {
+                Async::Ready(_) => {
+                    let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
 
-            let mut j = 0;
-            for i in s .. self.write_pos {
-                self.write_buf[j] = self.write_buf[i];
-                j += 1;
+                    let mut j = 0;
+                    for i in s..self.write_pos {
+                        self.write_buf[j] = self.write_buf[i];
+                        j += 1;
+                    }
+                    self.write_pos -= s;
+                },
+                _ => return Ok(Async::NotReady)
             }
-            self.write_pos -= s;
-
         }
         return Ok(Async::Ready(()));
     }
@@ -318,10 +365,10 @@ impl<H> Pipe<H> where H: PacketHandler + 'static {
 }
 
 impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
-    type Item = (u64, u64);
+    type Item = ();
     type Error = Error;
 
-    fn poll(&mut self) -> Poll<(u64, u64), io::Error> {
+    fn poll(&mut self) -> Poll<(), Error> {
         loop {
             let client_read = self.client_reader.read();
 
@@ -343,9 +390,6 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                     }
                 };
             }
-
-            // try writing to server
-            let server_write = self.server_writer.write();
 
             // try reading from server
             let server_read = self.server_reader.read();
@@ -369,8 +413,14 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                 };
             }
 
+            // perform all of the writes at the end, since the request handlers may have
+            // queued packets in either, or both directions
+
             // try writing to client
             let client_write = self.client_writer.write();
+
+            // try writing to server
+            let server_write = self.server_writer.write();
 
             try_ready!(client_read);
             try_ready!(client_write);
