@@ -176,7 +176,7 @@ pub struct Proxy {
 
 impl Proxy {
 
-    pub fn run<H>(handler: H) where H: PacketHandler {
+    pub fn run() {
 
         env_logger::init().unwrap();
         let addr = env::args().nth(1).unwrap_or("127.0.0.1:3307".to_string());
