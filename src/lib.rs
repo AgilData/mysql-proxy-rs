@@ -24,7 +24,9 @@ pub enum Action {
     /// forward a mutated packet
     Mutate(Packet),
     /// respond to the packet without forwarding
-    Respond(Vec<Packet>)
+    Respond(Vec<Packet>),
+    /// respond with an error packet
+    Error { code: u16, state: [u8; 5], msg: String },
 }
 
 /// Packet handlers need to implement this trait
@@ -305,6 +307,10 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                         for p in v {
                             self.client_writer.push(&p);
                         }
+                    },
+                    Action::Error { code, state, msg } => {
+                        let error_packet = Packet::error_packet(code, state, msg);
+                        self.client_writer.push(&error_packet);
                     }
                 };
             }
@@ -327,7 +333,8 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                         for p in v {
                             self.server_writer.push(&p);
                         }
-                    }
+                    },
+                    Action::Error { .. } => panic!("not supported")
                 };
             }
 
