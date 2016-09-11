@@ -1,6 +1,7 @@
 # mysql-proxy-rs
 
 [![Version](https://img.shields.io/crates/v/mysql-proxy.svg)](https://crates.io/crates/mysql-proxy)
+[![Docs](https://docs.rs/mysql-proxy/badge.svg)](https://docs.rs/mysql-proxy)
 
 An implementation of a MySQL proxy server built on top of `tokio-core`. Tested with `rustc 1.13.0-nightly (cbe4de78e 2016-09-05)`.
 
