@@ -69,7 +69,7 @@ struct DemoHandler {}
 
 impl PacketHandler for DemoHandler {
 
-    fn handle_request(&self, p: &Packet) -> Action {
+    fn handle_request(&mut self, p: &Packet) -> Action {
         print_packet_chars(&p.bytes);
         match p.packet_type() {
             Ok(PacketType::ComQuery) => {
@@ -98,7 +98,7 @@ impl PacketHandler for DemoHandler {
         }
     }
 
-    fn handle_response(&self, _: &Packet) -> Action {
+    fn handle_response(&mut self, _: &Packet) -> Action {
         // forward all responses to the client
         Action::Forward
     }

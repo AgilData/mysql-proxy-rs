@@ -31,8 +31,8 @@ pub enum Action {
 
 /// Packet handlers need to implement this trait
 pub trait PacketHandler {
-    fn handle_request(&self, p: &Packet) -> Action;
-    fn handle_response(&self, p: &Packet) -> Action;
+    fn handle_request(&mut self, p: &Packet) -> Action;
+    fn handle_response(&mut self, p: &Packet) -> Action;
 }
 
 /// A packet is just a wrapper for a Vec<u8>
