@@ -338,7 +338,10 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
                             self.server_writer.push(&p);
                         }
                     },
-                    Action::Error { .. } => panic!("not supported")
+                    Action::Error { code, state, msg } => {
+                        let error_packet = Packet::error_packet(code, state, msg);
+                        self.client_writer.push(&error_packet);
+                    }
                 };
             }
 
