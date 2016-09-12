@@ -19,6 +19,8 @@ use byteorder::*;
 
 /// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
 pub enum Action {
+    /// drop the packet
+    Drop,
     /// forward the packet unmodified
     Forward,
     /// forward a mutated packet
@@ -301,6 +303,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // process buffered requests
             while let Some(request) = self.client_reader.next() {
                 match self.handler.handle_request(&request) {
+                    Action::Drop => {},
                     Action::Forward => self.server_writer.push(&request),
                     Action::Mutate(ref p2) => self.server_writer.push(p2),
                     Action::Respond(ref v) => {
@@ -327,6 +330,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // process buffered responses
             while let Some(response) = self.server_reader.next() {
                 match self.handler.handle_response(&response) {
+                    Action::Drop => {},
                     Action::Forward => self.client_writer.push(&response),
                     Action::Mutate(ref p2) => self.client_writer.push(p2),
                     Action::Respond(ref v) => {
