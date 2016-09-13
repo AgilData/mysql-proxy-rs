@@ -33,6 +33,9 @@ fn main() {
     let mysql_addr = env::args().nth(2).unwrap_or("127.0.0.1:3306".to_string());
     let mysql_addr = mysql_addr.parse::<SocketAddr>().unwrap();
 
+    // choose which packet handler to run
+    let packet_handler = env::args().nth(3).unwrap_or("noop".to_string());
+
     // Create the tokio event loop that will drive this server
     let mut l = Core::new().unwrap();
 
@@ -50,12 +53,22 @@ fn main() {
         let future = TcpStream::connect(&mysql_addr, &handle).and_then(move |mysql| {
             Ok((socket, mysql))
         }).and_then(move |(client, server)| {
-            Pipe::new(Rc::new(client), Rc::new(server), DemoHandler {})
+
+            // create a handler based on cmd-line arg chosen
+            let handler : Box<PacketHandler> = match packet_handler {
+                String::from("noop") => Box::new(NoopHandler {}),
+                String::from("logging") => Box::new(PacketLoggingHandler {}),
+                String::from("avocado") => Box::new(AvocadoHandler {}),
+                _ => panic!("Invalid packet handler name {}", packet_handler)
+            };
+
+            // return the future to handle this connection pair
+            Pipe::new(Rc::new(client), Rc::new(server), handler)
         });
 
         // tell the tokio reactor to run the future
         handle.spawn(future.map_err(|err| {
-            println!("Failed to spawn future: {:?}", err);
+            println!("Error: {:?}", err);
         }));
 
         // everything is great!
@@ -65,9 +78,47 @@ fn main() {
     l.run(done).unwrap();
 }
 
-struct DemoHandler {}
+/// This handler simply passes packets through without adding any new behavior and is here
+/// to demonstrate the API as well as provide a simple way to perform benchmarks.
+struct NoopHandler {}
 
-impl PacketHandler for DemoHandler {
+impl PacketHandler for NoopHandler {
+
+    fn handle_request(&mut self, p: &Packet) -> Action {
+        Action::Forward
+    }
+
+    fn handle_response(&mut self, p: &Packet) -> Action {
+        Action::Forward
+    }
+}
+
+/// This handler logs all SQL queries issued by clients
+struct PacketLoggingHandler {}
+
+impl PacketHandler for PacketLoggingHandler {
+    fn handle_request(&mut self, p: &Packet) -> Action {
+        match p.packet_type() {
+            Ok(PacketType::ComQuery) => {
+                let slice = &p.bytes[5..];
+                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
+                println!("SQL: {}", sql);
+            }
+        }
+        Action::Forward
+    }
+
+    fn handle_response(&mut self, p: &Packet) -> Action {
+        Action::Forward
+    }
+}
+
+
+/// This handler logs all SQL queries issued by clients, and rejects queries containing the
+/// the word 'avocado'.
+struct AvocadoHandler {}
+
+impl PacketHandler for AvocadoHandler {
 
     fn handle_request(&mut self, p: &Packet) -> Action {
         print_packet_chars(&p.bytes);
@@ -106,6 +157,7 @@ impl PacketHandler for DemoHandler {
     }
 
 }
+
 #[allow(dead_code)]
 pub fn print_packet_chars(buf: &[u8]) {
     print!("[");

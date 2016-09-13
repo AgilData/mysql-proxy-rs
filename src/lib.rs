@@ -267,13 +267,13 @@ pub struct Pipe<H: PacketHandler + 'static> {
     client_writer: ConnWriter,
     server_reader: ConnReader,
     server_writer: ConnWriter,
-    handler: H,
+    handler: Box<H>,
 }
 
 impl<H> Pipe<H> where H: PacketHandler + 'static {
     pub fn new(client: Rc<TcpStream>,
            server: Rc<TcpStream>,
-           handler: H
+           handler: Box<H>
            ) -> Pipe<H> {
 
         Pipe {
