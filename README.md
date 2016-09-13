@@ -10,10 +10,18 @@ An implementation of a MySQL proxy server built on top of `tokio-core`. Tested w
 The proxy uses the following interface for defining a handler for handling request and response packets:
 
 ```rust
+/// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
 pub enum Action {
-    Forward,                // forward the packet unmodified
-    Mutate(Packet),         // mutate the packet
-    Respond(Vec<Packet>)    // handle directly and optionally return some packets
+    /// drop the packet
+    Drop,
+    /// forward the packet unmodified
+    Forward,
+    /// forward a mutated packet
+    Mutate(Packet),
+    /// respond to the packet without forwarding
+    Respond(Vec<Packet>),
+    /// respond with an error packet
+    Error { code: u16, state: [u8; 5], msg: String },
 }
 
 pub trait PacketHandler {
