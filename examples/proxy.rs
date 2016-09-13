@@ -86,9 +86,11 @@ impl PacketHandler for DemoHandler {
                 if sql.contains("avocado") {
                     // take over processing of this packet and return an error packet
                     // to the client
-                    Action::Error(1064, // error code
-                                  [0x31, 0x32, 0x33, 0x34, 0x35], // sql state
-                                  String::from("Proxy rejecting any avocado-related queries"))
+                    Action::Error {
+                        code: 1064, // error code
+                        state: [0x31, 0x32, 0x33, 0x34, 0x35], // sql state
+                        msg: String::from("Proxy rejecting any avocado-related queries")
+                    }
                 } else {
                     // pass the packet to MySQL unmodified
                     Action::Forward
