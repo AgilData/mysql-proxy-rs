@@ -50,7 +50,7 @@ fn main() {
         let future = TcpStream::connect(&mysql_addr, &handle).and_then(move |mysql| {
             Ok((socket, mysql))
         }).and_then(move |(client, server)| {
-            Pipe::new(Rc::new(client), Rc::new(server), DemoHandler {})
+            Pipe::new(Rc::new(client), Rc::new(server), DemoHandler { counter: 0 })
         });
 
         // tell the tokio reactor to run the future
@@ -65,42 +65,63 @@ fn main() {
     l.run(done).unwrap();
 }
 
-struct DemoHandler {}
+struct DemoHandler {
+    counter: usize
+
+}
 
 impl PacketHandler for DemoHandler {
 
     fn handle_request(&mut self, p: &Packet) -> Action {
-        print_packet_chars(&p.bytes);
-        match p.packet_type() {
-            Ok(PacketType::ComQuery) => {
-                // ComQuery packets just contain a SQL string as the payload
-                let slice = &p.bytes[5..];
-
-                // convert the slice to a String object
-                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
-
-                // log the query
-                println!("SQL: {}", sql);
-
-                // dumb example of conditional proxy behavior
-                if sql.contains("avocado") {
-                    // take over processing of this packet and return an error packet
-                    // to the client
-                    Action::Error(1064, // error code
-                                  [0x31, 0x32, 0x33, 0x34, 0x35], // sql state
-                                  String::from("Proxy rejecting any avocado-related queries"))
-                } else {
-                    // pass the packet to MySQL unmodified
-                    Action::Forward
-                }
-            },
-            _ => Action::Forward
-        }
+        self.counter = 0;
+        Action::Forward
+//        print_packet_chars(&p.bytes);
+//        match p.packet_type() {
+//            Ok(PacketType::ComQuery) => {
+//                // ComQuery packets just contain a SQL string as the payload
+//                let slice = &p.bytes[5..];
+//
+//                // convert the slice to a String object
+//                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
+//
+//                // log the query
+//                println!("SQL: {}", sql);
+//
+//                // dumb example of conditional proxy behavior
+//                if sql.contains("avocado") {
+//                    // take over processing of this packet and return an error packet
+//                    // to the client
+//                    Action::Error(1064, // error code
+//                                  [0x31, 0x32, 0x33, 0x34, 0x35], // sql state
+//                                  String::from("Proxy rejecting any avocado-related queries"))
+//                } else {
+//                    // pass the packet to MySQL unmodified
+//                    Action::Forward
+//                }
+//            },
+//            _ => Action::Forward
+//        }
     }
 
-    fn handle_response(&mut self, _: &Packet) -> Action {
-        // forward all responses to the client
-        Action::Forward
+    fn handle_response(&mut self, p: &Packet) -> Action {
+        println!("---------------------- handle_response() ----------------------");
+        print_packet_chars(&p.bytes);
+
+        // packets 1-4 column meta
+        // packets 5-45 = result row
+        // packet 46 = EOF
+
+        let n = 5;
+        self.counter += 1;
+        let action = if self.counter < n {
+            Action::Forward
+        } else if self.counter == n {
+            Action::Error { code: 1234, state: [31,32,32,34,35], msg: String::from("bad reults")}
+        } else /*if self.counter > n*/ {
+            Action::Drop
+        };
+        println!("Response packet {}: action = {:?}", self.counter, action);
+        action
     }
 
 }

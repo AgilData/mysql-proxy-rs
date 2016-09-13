@@ -18,6 +18,7 @@ use tokio_core::net::{TcpStream};
 use byteorder::*;
 
 /// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
+#[derive(Debug)]
 pub enum Action {
     /// drop the packet
     Drop,
@@ -38,6 +39,7 @@ pub trait PacketHandler {
 }
 
 /// A packet is just a wrapper for a Vec<u8>
+#[derive(Debug)]
 pub struct Packet {
     pub bytes: Vec<u8>
 }
@@ -270,6 +272,7 @@ pub struct Pipe<H: PacketHandler + 'static> {
     handler: H,
 }
 
+
 impl<H> Pipe<H> where H: PacketHandler + 'static {
     pub fn new(client: Rc<TcpStream>,
            server: Rc<TcpStream>,
@@ -297,7 +300,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // if the client connection has closed, close the server connection too
             match &client_read {
                 &Err(ref e) => {
-                    debug!("Client closed connection: {}", e);
+                    println!("Client closed connection: {}", e);
                     self.server_writer.stream.shutdown(Shutdown::Write).unwrap();
                 },
                 _ => {}
@@ -327,7 +330,7 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // if the server connection has closed, close the client connection too
             match &server_read {
                 &Err(ref e) => {
-                    debug!("Server closed connection: {}", e);
+                    println!("Server closed connection: {}", e);
                     self.client_writer.stream.shutdown(Shutdown::Write).unwrap();
                 },
                 _ => {}
