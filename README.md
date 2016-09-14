@@ -9,7 +9,7 @@ An implementation of a MySQL proxy server built on top of `tokio-core`.
 
 This crate provides a MySQL proxy server that you can extend with your own custom logic. Here are some examples of use cases for a proxy:
 
-- Capture a log of SQL queries issues by an application
+- Capture a log of SQL queries issued by an application
 - Profiling of query execution time
 - Monitor query patterns e.g. threat detection
 - Record SQL traffic for later playback for automated testing
