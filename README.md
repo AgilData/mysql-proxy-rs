@@ -1,5 +1,6 @@
 # mysql-proxy-rs
 
+[![CircleCI](https://circleci.com/gh/AgilData/mysql-proxy-rs/tree/master.svg?style=svg)](https://circleci.com/gh/AgilData/mysql-proxy-rs/tree/master)
 [![Version](https://img.shields.io/crates/v/mysql-proxy.svg)](https://crates.io/crates/mysql-proxy)
 [![Docs](https://docs.rs/mysql-proxy/badge.svg)](https://docs.rs/mysql-proxy)
 

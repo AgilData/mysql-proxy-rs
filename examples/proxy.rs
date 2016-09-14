@@ -47,10 +47,10 @@ fn main() {
     let done = socket.incoming().for_each(move |(socket, _)| {
 
         // create a future to serve requests
-        let future = TcpStream::connect(&mysql_addr, &handle).and_then(move |mysql| {
-            Ok((socket, mysql))
-        }).and_then(move |(client, server)| {
-            Pipe::new(Rc::new(client), Rc::new(server), DemoHandler {})
+        let future = TcpStream::connect(&mysql_addr, &handle)
+            .and_then(move |mysql| { Ok((socket, mysql)) })
+            .and_then(move |(client, server)|
+                { Pipe::new(Rc::new(client), Rc::new(server), DemoHandler {})
         });
 
         // tell the tokio reactor to run the future
