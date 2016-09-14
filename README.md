@@ -3,11 +3,30 @@
 [![Version](https://img.shields.io/crates/v/mysql-proxy.svg)](https://crates.io/crates/mysql-proxy)
 [![Docs](https://docs.rs/mysql-proxy/badge.svg)](https://docs.rs/mysql-proxy)
 
-An implementation of a MySQL proxy server built on top of `tokio-core`. Tested with `rustc 1.13.0-nightly (cbe4de78e 2016-09-05)`.
+An implementation of a MySQL proxy server built on top of `tokio-core`. 
+
+## Overview
+
+This crate provides a MySQL proxy server that you can extend with your own custom logic. Here are some examples of use cases for a proxy:
+
+- Capture a log of SQL queries issues by an application
+- Profiling of query execution time
+- Monitor query patterns e.g. threat detection
+- Record SQL traffic for later playback for automated testing
 
 ## Usage
 
-The proxy uses the following interface for defining a handler for handling request and response packets:
+The proxy defines the following trait for defining a packet handler for handling request and response packets:
+
+```rust
+pub trait PacketHandler {
+    fn handle_request(&self, p: &Packet) -> Action;
+    fn handle_response(&self, p: &Packet) -> Action;
+}
+```
+
+Each method returns a variant of the `Action` enumeration to tell the proxy what action to take. 
+
 
 ```rust
 /// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
@@ -24,25 +43,19 @@ pub enum Action {
     Error { code: u16, state: [u8; 5], msg: String },
 }
 
-pub trait PacketHandler {
-    fn handle_request(&self, p: &Packet) -> Action;
-    fn handle_response(&self, p: &Packet) -> Action;
-}
 ```
-
-This allows the proxy to forward packets unmodified, mutate individual packets, or take over handling of a packet completely.
 
 ## Example
 
-The example proxy passes all queries to MySQL except for queries containing the word 'avocado'.
+The example proxy passes all queries to MySQL except for queries containing the word 'avocado'. Use the following command to run the example.
+
+Note that we have tested the proxy with `rustc 1.13.0-nightly (cbe4de78e 2016-09-05)`.
 
 ```
 $ cargo run --example proxy
-   ...
-Listening for MySQL proxy connections on 127.0.0.1:3307
 ```
 
-Then in a separate window you can test out the proxy. The proxy currently assumes that a MySQL server is running on port 3306.
+Then in a separate window you can test out the proxy. The proxy binds to port 3307 and assumes that a MySQL server is running on port 3306.
 
 ```
 $ mysql -u root -p -h 127.0.0.1 -P 3307
