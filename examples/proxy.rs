@@ -34,7 +34,7 @@ fn main() {
     let mysql_addr = mysql_addr.parse::<SocketAddr>().unwrap();
 
     // choose which packet handler to run
-    let packet_handler = env::args().nth(3).unwrap_or("noop".to_string());
+    let packet_handler = String::from(env::args().nth(3).unwrap_or("noop".to_string()));
 
     // Create the tokio event loop that will drive this server
     let mut l = Core::new().unwrap();
@@ -50,30 +50,27 @@ fn main() {
     let done = socket.incoming().for_each(move |(socket, _)| {
 
         // create a future to serve requests
-        let future = TcpStream::connect(&mysql_addr, &handle).and_then(move |mysql| {
-            Ok((socket, mysql))
-        }).and_then(move |(client, server)| {
+        let future = TcpStream::connect(&mysql_addr, &handle)
+            .and_then(move |mysql| Ok((socket, mysql)) )
+            .and_then(move |(client, server)| {
 
-            // create a handler based on cmd-line arg chosen
-            let handler : Box<PacketHandler> = match packet_handler {
-                String::from("noop") => Box::new(NoopHandler {}),
-                String::from("logging") => Box::new(PacketLoggingHandler {}),
-                String::from("avocado") => Box::new(AvocadoHandler {}),
-                _ => panic!("Invalid packet handler name {}", packet_handler)
-            };
+                // create a handler based on cmd-line arg chosen
+                let handler : Box<PacketHandler> = match &packet_handler {
+                    "noop" => Box::new(NoopHandler {}),
+                    "logging" => Box::new(PacketLoggingHandler {}),
+                    "avocado" => Box::new(AvocadoHandler {}),
+                    _ => panic!("Invalid packet handler name {}", packet_handler)
+                };
 
-            // return the future to handle this connection pair
-            Pipe::new(Rc::new(client), Rc::new(server), handler)
-        });
+                // return the future to handle this connection pair
+                Pipe::new(Rc::new(client), Rc::new(server), handler)
+            });
 
         // tell the tokio reactor to run the future
-        handle.spawn(future.map_err(|err| {
-            println!("Error: {:?}", err);
-        }));
+        handle.spawn(future.map_err(|err| { println!("Error: {:?}", err); }));
 
         // everything is great!
         Ok(())
-
     });
     l.run(done).unwrap();
 }

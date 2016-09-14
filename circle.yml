@@ -1,0 +1,15 @@
+dependencies:
+  override:
+    - rm -f ~/.gitconfig
+    - if [ ! -f "/home/ubuntu/rustup.sh" ]; then curl https://sh.rustup.rs -sSf > /home/ubuntu/rustup.sh && chmod ogu+x /home/ubuntu/rustup.sh && /home/ubuntu/rustup.sh -y ; fi
+    - echo "source $HOME/.cargo/env" >> ~/.bashrc
+    - /bin/bash scripts/circleci/build.sh
+
+  cache_directories:
+    - "~/rustup.sh"
+    - "~/.cargo"
+    - "~/.multirust"
+
+test:
+  override:
+    - /bin/bash scripts/circleci/test.sh
