@@ -69,35 +69,8 @@ struct DemoHandler {}
 
 impl PacketHandler for DemoHandler {
 
-    fn handle_request(&mut self, p: &Packet) -> Action {
-        print_packet_chars(&p.bytes);
-        match p.packet_type() {
-            Ok(PacketType::ComQuery) => {
-                // ComQuery packets just contain a SQL string as the payload
-                let slice = &p.bytes[5..];
-
-                // convert the slice to a String object
-                let sql = String::from_utf8(slice.to_vec()).expect("Invalid UTF-8");
-
-                // log the query
-                println!("SQL: {}", sql);
-
-                // dumb example of conditional proxy behavior
-                if sql.contains("avocado") {
-                    // take over processing of this packet and return an error packet
-                    // to the client
-                    Action::Error {
-                        code: 1064, // error code
-                        state: [0x31, 0x32, 0x33, 0x34, 0x35], // sql state
-                        msg: String::from("Proxy rejecting any avocado-related queries")
-                    }
-                } else {
-                    // pass the packet to MySQL unmodified
-                    Action::Forward
-                }
-            },
-            _ => Action::Forward
-        }
+    fn handle_request(&mut self, _: &Packet) -> Action {
+        Action::Forward
     }
 
     fn handle_response(&mut self, _: &Packet) -> Action {
@@ -106,6 +79,7 @@ impl PacketHandler for DemoHandler {
     }
 
 }
+
 #[allow(dead_code)]
 pub fn print_packet_chars(buf: &[u8]) {
     print!("[");
