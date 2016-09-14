@@ -23,12 +23,7 @@ pub trait PacketHandler {
     fn handle_request(&self, p: &Packet) -> Action;
     fn handle_response(&self, p: &Packet) -> Action;
 }
-```
 
-Each method returns a variant of the `Action` enumeration to tell the proxy what action to take. 
-
-
-```rust
 /// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
 pub enum Action {
     /// drop the packet
