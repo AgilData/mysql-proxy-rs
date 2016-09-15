@@ -149,15 +149,14 @@ pub enum PacketType {
 /// Wrapper for TcpStream with some built-in buffering
 struct ConnReader {
     stream: Rc<TcpStream>,
+    packet_buf: Vec<u8>,
     read_buf: Vec<u8>,
-    read_pos: usize,
 }
 
 /// Wrapper for TcpStream with some built-in buffering
 struct ConnWriter {
     stream: Rc<TcpStream>,
     write_buf: Vec<u8>,
-    write_pos: usize,
 }
 
 impl ConnReader {
@@ -165,8 +164,8 @@ impl ConnReader {
     fn new(stream: Rc<TcpStream>) -> Self {
         ConnReader {
             stream: stream,
-            read_buf: vec![0u8; 4096],
-            read_pos: 0,
+            packet_buf: Vec::with_capacity(4096),
+            read_buf: vec![0_u8; 4096]
         }
     }
 
@@ -176,16 +175,11 @@ impl ConnReader {
         loop {
             match self.stream.poll_read() {
                 Async::Ready(_) => {
-                    // extend if needed
-                    if self.read_pos >= self.read_buf.len() {
-                        self.read_buf.extend_from_slice(&vec![0u8; 4096]);
-                    }
-                    let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
-
+                    let n = try_nb!((&*self.stream).read(&mut self.read_buf[..]));
                     if n == 0 {
                         return Err(Error::new(ErrorKind::Other, "connection closed"));
                     }
-                    self.read_pos += n;
+                    self.packet_buf.extend_from_slice(&self.read_buf[0..n]);
                 },
                 _ => return Ok(Async::NotReady),
             }
@@ -195,25 +189,12 @@ impl ConnReader {
     fn next(&mut self) -> Option<Packet> {
         debug!("next()");
         // do we have a header
-        if self.read_pos > 3 {
-            let l = parse_packet_length(&self.read_buf);
+        if self.packet_buf.len() > 3 {
+            let l = parse_packet_length(&self.packet_buf);
             // do we have the whole packet?
             let s = 4 + l;
-            if self.read_pos >= s {
-                let mut temp : Vec<u8> = Vec::with_capacity(s);
-                temp.extend_from_slice(&self.read_buf[0..s]);
-                let p = Packet { bytes: temp };
-                if self.read_pos == s {
-                    self.read_pos = 0;
-                } else {
-                    // shift data down
-                    let mut j = 0;
-                    for i in s .. self.read_pos {
-                        self.read_buf[j] = self.read_buf[i];
-                        j += 1;
-                    }
-                    self.read_pos -= s;
-                }
+            if self.packet_buf.len() >= s {
+                let p = Packet { bytes: self.packet_buf.drain(0..s).collect() };
                 Some(p)
             } else {
                 None
@@ -229,48 +210,27 @@ impl ConnWriter {
     fn new(stream: Rc<TcpStream>) -> Self {
         ConnWriter{
             stream: stream,
-            write_buf: vec![0u8; 4096],
-            write_pos: 0,
+            write_buf: Vec::with_capacity(4096),
         }
     }
 
     /// Write a packet to the write buffer
     fn push(&mut self, p: &Packet) {
-        debug!("push() capacity: {} position: {} packet_size: {}",
-               self.write_buf.capacity(), self.write_pos, p.bytes.len());
-        // Conditionally extend
-        if (self.write_pos + p.bytes.len()) >= self.write_buf.capacity() {
-            let size = (self.write_pos + p.bytes.len()) - self.write_buf.capacity();
-            self.write_buf.extend_from_slice(&vec![0u8; size]);
-            debug!("push() extend to capacity {}", self.write_buf.capacity());
-        }
+//        debug!("push() capacity: {} position: {} packet_size: {}",
+//               self.write_buf.capacity(), self.write_pos, p.bytes.len());
 
-        for i in 0 .. p.bytes.len() {
-            self.write_buf[self.write_pos + i as usize] = p.bytes[i];
-        }
-        self.write_pos += p.bytes.len();
+        self.write_buf.extend_from_slice(&p.bytes);
         debug!("end push()");
     }
 
     /// Writes the contents of the write buffer to the socket
     fn write(&mut self) -> Poll<(), io::Error> {
         debug!("write()");
-        while self.write_pos > 0 {
+        while self.write_buf.len() > 0 {
             match self.stream.poll_write() {
                 Async::Ready(_) => {
-                    let s = try!((&*self.stream).write(&self.write_buf[0..self.write_pos]));
-                    if s == self.write_pos {
-                        self.write_pos = 0;
-                    } else {
-                        // for a partial write, shift data down
-                        let mut j = 0;
-                        for i in s..self.write_pos {
-                            self.write_buf[j] = self.write_buf[i];
-                            j += 1;
-                        }
-                        self.write_pos -= s;
-                    }
-
+                    let s = try!((&*self.stream).write(&self.write_buf[..]));
+                    let _ : Vec<u8> = self.write_buf.drain(0..s).collect();
                 },
                 _ => return Ok(Async::NotReady)
             }
