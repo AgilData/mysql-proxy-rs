@@ -246,7 +246,7 @@ impl ConnWriter {
         }
 
         for i in 0 .. p.bytes.len() {
-            self.write_buf.insert(self.write_pos + i as usize, p.bytes[i]);
+            self.write_buf[self.write_pos + i as usize] = p.bytes[i];
         }
         self.write_pos += p.bytes.len();
         debug!("end push()");
