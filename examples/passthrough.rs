@@ -69,7 +69,6 @@ struct PassthroughHandler {}
 impl PacketHandler for PassthroughHandler {
 
     fn handle_request(&mut self, p: &Packet) -> Action {
-        print_packet_chars(&p.bytes);
         Action::Forward
     }
 
