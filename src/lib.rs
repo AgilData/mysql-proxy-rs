@@ -175,8 +175,12 @@ impl ConnReader {
         loop {
             match self.stream.poll_read() {
                 Async::Ready(_) => {
-                    //TODO: ensure capacity first
+                    // extend if needed
+                    if self.read_pos >= self.read_buf.len() {
+                        self.read_buf.extend_from_slice(&vec![0u8; 4096]);
+                    }
                     let n = try_nb!((&*self.stream).read(&mut self.read_buf[self.read_pos..]));
+
                     if n == 0 {
                         return Err(Error::new(ErrorKind::Other, "connection closed"));
                     }
@@ -230,6 +234,12 @@ impl ConnWriter {
 
     /// Write a packet to the write buffer
     fn push(&mut self, p: &Packet) {
+        // Conditionally extend
+        if p.bytes.len() >= self.write_buf.capacity() {
+            let size = p.bytes.len() - self.write_buf.capacity();
+            self.write_buf.extend_from_slice(&vec![0u8; size]);
+
+        }
         for i in 0 .. p.bytes.len() {
             self.write_buf[self.write_pos + i] = p.bytes[i];
         }
