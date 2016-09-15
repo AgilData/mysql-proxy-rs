@@ -172,6 +172,7 @@ impl ConnReader {
 
     /// Read from the socket until the status is NotReady
     fn read(&mut self) -> Poll<(), io::Error> {
+        debug!("read()");
         loop {
             match self.stream.poll_read() {
                 Async::Ready(_) => {
@@ -192,6 +193,7 @@ impl ConnReader {
     }
 
     fn next(&mut self) -> Option<Packet> {
+        debug!("next()");
         // do we have a header
         if self.read_pos > 3 {
             let l = parse_packet_length(&self.read_buf);
@@ -234,20 +236,25 @@ impl ConnWriter {
 
     /// Write a packet to the write buffer
     fn push(&mut self, p: &Packet) {
+        debug!("push() capacity: {} position: {} packet_size: {}",
+               self.write_buf.capacity(), self.write_pos, p.bytes.len());
         // Conditionally extend
-        if p.bytes.len() >= self.write_buf.capacity() {
-            let size = p.bytes.len() - self.write_buf.capacity();
+        if (self.write_pos + p.bytes.len()) >= self.write_buf.capacity() {
+            let size = (self.write_pos + p.bytes.len()) - self.write_buf.capacity();
             self.write_buf.extend_from_slice(&vec![0u8; size]);
-
+            debug!("push() extend to capacity {}", self.write_buf.capacity());
         }
+
         for i in 0 .. p.bytes.len() {
-            self.write_buf[self.write_pos + i] = p.bytes[i];
+            self.write_buf.insert(self.write_pos + i as usize, p.bytes[i]);
         }
         self.write_pos += p.bytes.len();
+        debug!("end push()");
     }
 
     /// Writes the contents of the write buffer to the socket
     fn write(&mut self) -> Poll<(), io::Error> {
+        debug!("write()");
         while self.write_pos > 0 {
             match self.stream.poll_write() {
                 Async::Ready(_) => {
