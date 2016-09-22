@@ -18,6 +18,7 @@ use tokio_core::net::{TcpStream};
 use byteorder::*;
 
 /// Handlers return a variant of this enum to indicate how the proxy should handle the packet.
+#[derive(Debug,PartialEq)]
 pub enum Action {
     /// drop the packet
     Drop,
@@ -38,6 +39,7 @@ pub trait PacketHandler {
 }
 
 /// A packet is just a wrapper for a Vec<u8>
+#[derive(Debug,PartialEq)]
 pub struct Packet {
     pub bytes: Vec<u8>
 }
