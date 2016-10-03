@@ -273,18 +273,6 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
         loop {
             let client_read = self.client_reader.read();
 
-            // if the client connection has closed, close the server connection too
-            match &client_read {
-                &Err(ref e) => {
-                    debug!("Client closed connection: {}", e);
-                    match self.server_writer.stream.shutdown(Shutdown::Write) {
-                        Ok(_) => {},
-                        Err(_) => {}
-                    }
-                },
-                _ => {}
-            }
-
             // process buffered requests
             while let Some(request) = self.client_reader.next() {
                 match self.handler.handle_request(&request) {
@@ -305,18 +293,6 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
 
             // try reading from server
             let server_read = self.server_reader.read();
-
-            // if the server connection has closed, close the client connection too
-            match &server_read {
-                &Err(ref e) => {
-                    debug!("Server closed connection: {}", e);
-                    match self.client_writer.stream.shutdown(Shutdown::Write) {
-                        Ok(_) => {},
-                        Err(_) => {}
-                    }
-                },
-                _ => {}
-            }
 
             // process buffered responses
             while let Some(response) = self.server_reader.next() {
@@ -342,8 +318,32 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             // try writing to client
             let client_write = self.client_writer.write();
 
+            // if the server connection has closed, close the client connection too
+            match &server_read {
+                &Err(ref e) => {
+                    debug!("Server closed connection: {}", e);
+                    match self.client_writer.stream.shutdown(Shutdown::Write) {
+                        Ok(_) => {},
+                        Err(_) => {}
+                    }
+                },
+                _ => {}
+            }
+
             // try writing to server
             let server_write = self.server_writer.write();
+
+            // if the client connection has closed, close the server connection too
+            match &client_read {
+                &Err(ref e) => {
+                    debug!("Client closed connection: {}", e);
+                    match self.server_writer.stream.shutdown(Shutdown::Write) {
+                        Ok(_) => {},
+                        Err(_) => {}
+                    }
+                },
+                _ => {}
+            }
 
             try_ready!(client_read);
             try_ready!(client_write);
