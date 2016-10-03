@@ -277,7 +277,10 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             match &client_read {
                 &Err(ref e) => {
                     debug!("Client closed connection: {}", e);
-                    self.server_writer.stream.shutdown(Shutdown::Write).unwrap();
+                    match self.server_writer.stream.shutdown(Shutdown::Write) {
+                        Ok(_) => {},
+                        Err(_) => {}
+                    }
                 },
                 _ => {}
             }
@@ -307,7 +310,10 @@ impl<H> Future for Pipe<H> where H: PacketHandler + 'static {
             match &server_read {
                 &Err(ref e) => {
                     debug!("Server closed connection: {}", e);
-                    self.client_writer.stream.shutdown(Shutdown::Write).unwrap();
+                    match self.client_writer.stream.shutdown(Shutdown::Write) {
+                        Ok(_) => {},
+                        Err(_) => {}
+                    }
                 },
                 _ => {}
             }
